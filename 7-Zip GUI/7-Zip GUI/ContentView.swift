@@ -45,10 +45,15 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 780, minHeight: 500)
+        .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
         .sheet(isPresented: $appViewModel.showInfoSheet) {
             if let item = appViewModel.infoItem {
                 FilePropertiesSheet(item: item, isPresented: $appViewModel.showInfoSheet)
+                    .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
             }
+        }
+        .sheet(isPresented: $appViewModel.showSettingsSheet) {
+            SettingsView(appViewModel: appViewModel, isPresented: $appViewModel.showSettingsSheet)
         }
     }
 }

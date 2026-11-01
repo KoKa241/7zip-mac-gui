@@ -105,11 +105,27 @@ struct FileItem: Identifiable, Hashable {
     }
 
     static func == (lhs: FileItem, rhs: FileItem) -> Bool {
-        lhs.id == rhs.id && lhs.url == rhs.url
+        lhs.id == rhs.id &&
+        lhs.url == rhs.url &&
+        lhs.name == rhs.name &&
+        lhs.isDirectory == rhs.isDirectory &&
+        lhs.isParentEntry == rhs.isParentEntry &&
+        lhs.size == rhs.size &&
+        lhs.packedSize == rhs.packedSize &&
+        lhs.modifiedDate == rhs.modifiedDate &&
+        lhs.createdDate == rhs.createdDate &&
+        lhs.accessedDate == rhs.accessedDate &&
+        lhs.posixPermissions == rhs.posixPermissions &&
+        lhs.fileType == rhs.fileType &&
+        lhs.comment == rhs.comment
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(url)
+        hasher.combine(name)
+        hasher.combine(isDirectory)
+        hasher.combine(size)
+        hasher.combine(modifiedDate)
     }
 }

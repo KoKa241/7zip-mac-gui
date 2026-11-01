@@ -6,10 +6,65 @@
 import Foundation
 import Combine
 import AppKit
+import SwiftUI
+
+enum AppTheme: String, CaseIterable, Identifiable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var preferredColorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
+enum ToolbarIconStyle: String, CaseIterable, Identifiable {
+    case modern = "modern"
+    case classic = "classic"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .modern: return "Modern (macOS)"
+        case .classic: return "Classic (7-Zip)"
+        }
+    }
+}
 
 final class FileManagerAppViewModel: ObservableObject {
     @Published var isDualPane: Bool = false
     @Published var activePanelIndex: Int = 0
+
+    // Theme & Appearance
+    @Published var appTheme: AppTheme = .system {
+        didSet {
+            UserDefaults.standard.set(appTheme.rawValue, forKey: "7zip.appTheme")
+            applyTheme()
+        }
+    }
+
+    @Published var toolbarIconStyle: ToolbarIconStyle = .modern {
+        didSet {
+            UserDefaults.standard.set(toolbarIconStyle.rawValue, forKey: "7zip.toolbarIconStyle")
+        }
+    }
+
+    @Published var showSettingsSheet: Bool = false
 
     // Toolbar configuration (matching 7-Zip View -> Toolbars options)
     @Published var showArchiveToolbar: Bool = true
@@ -29,18 +84,52 @@ final class FileManagerAppViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let desktop = (home as NSString).appendingPathComponent("Desktop")
-        let rightInitial = FileManager.default.fileExists(atPath: desktop) ? desktop : home
+        let fm = FileManager.default
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+                             CommandLine.arguments.contains("-ui-testing")
+        let initialLeft: String
+        let initialRight: String
+        if isRunningTests {
+            initialLeft = fm.temporaryDirectory.path
+            initialRight = fm.temporaryDirectory.path
+        } else {
+            let home = fm.homeDirectoryForCurrentUser.path
+            let desktop = (home as NSString).appendingPathComponent("Desktop")
+            initialLeft = home
+            initialRight = fm.fileExists(atPath: desktop) ? desktop : home
+        }
 
-        self.leftPanel = FilePanelViewModel(panelIndex: 0, initialPath: home)
-        self.rightPanel = FilePanelViewModel(panelIndex: 1, initialPath: rightInitial)
+        self.leftPanel = FilePanelViewModel(panelIndex: 0, initialPath: initialLeft)
+        self.rightPanel = FilePanelViewModel(panelIndex: 1, initialPath: initialRight)
+
+        if let savedTheme = UserDefaults.standard.string(forKey: "7zip.appTheme"),
+           let theme = AppTheme(rawValue: savedTheme) {
+            self.appTheme = theme
+        }
+        if let savedStyle = UserDefaults.standard.string(forKey: "7zip.toolbarIconStyle"),
+           let style = ToolbarIconStyle(rawValue: savedStyle) {
+            self.toolbarIconStyle = style
+        }
 
         self.leftPanel.onActivatePanel = { [weak self] in
             self?.activePanelIndex = 0
         }
         self.rightPanel.onActivatePanel = { [weak self] in
             self?.activePanelIndex = 1
+        }
+
+        applyTheme()
+    }
+
+    func applyTheme() {
+        guard let app = NSApp else { return }
+        switch appTheme {
+        case .system:
+            app.appearance = nil
+        case .light:
+            app.appearance = NSAppearance(named: .aqua)
+        case .dark:
+            app.appearance = NSAppearance(named: .darkAqua)
         }
     }
 

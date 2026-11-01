@@ -50,6 +50,12 @@ final class FilePanelViewModel: ObservableObject {
 
     private func setupInitialHistory() {
         let fm = FileManager.default
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+                             CommandLine.arguments.contains("-ui-testing")
+        if isRunningTests {
+            pathHistory = [fm.temporaryDirectory.path, "/"]
+            return
+        }
         let home = fm.homeDirectoryForCurrentUser.path
         var defaults: [String] = [
             home,
@@ -80,7 +86,9 @@ final class FilePanelViewModel: ObservableObject {
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: targetPath, isDirectory: &isDir), isDir.boolValue else {
             errorMessage = "Folder not found: \(targetPath)"
-            pathInput = currentPath
+            if !currentPath.isEmpty {
+                pathInput = currentPath.hasSuffix("/") ? currentPath : currentPath + "/"
+            }
             return
         }
 
@@ -88,11 +96,10 @@ final class FilePanelViewModel: ObservableObject {
         currentPath = targetPath
         pathInput = targetPath.hasSuffix("/") ? targetPath : targetPath + "/"
 
-        if !pathHistory.contains(targetPath) {
-            pathHistory.insert(targetPath, at: 0)
-            if pathHistory.count > 20 {
-                pathHistory.removeLast()
-            }
+        pathHistory.removeAll { $0 == targetPath }
+        pathHistory.insert(targetPath, at: 0)
+        if pathHistory.count > 20 {
+            pathHistory.removeLast()
         }
 
         loadItems()
@@ -125,7 +132,7 @@ final class FilePanelViewModel: ObservableObject {
 
     func loadItems() {
         let fm = FileManager.default
-        let dirURL = URL(fileURLWithPath: currentPath, isDirectory: true)
+        let dirURL = URL(fileURLWithPath: currentPath, isDirectory: true).resolvingSymlinksInPath()
         let keys: [URLResourceKey] = [
             .isDirectoryKey,
             .isPackageKey,
@@ -159,6 +166,8 @@ final class FilePanelViewModel: ObservableObject {
                 urls = try fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: keys, options: options)
             }
 
+            let resolvedPrefix = dirURL.path.hasSuffix("/") ? dirURL.path : dirURL.path + "/"
+
             for url in urls {
                 let res = try? url.resourceValues(forKeys: Set(keys))
                 let isDirectory = (res?.isDirectory ?? false) && !(res?.isPackage ?? false)
@@ -178,9 +187,9 @@ final class FilePanelViewModel: ObservableObject {
 
                 let itemName: String
                 if flatView {
-                    let prefix = dirURL.path.hasSuffix("/") ? dirURL.path : dirURL.path + "/"
-                    if url.path.hasPrefix(prefix) {
-                        itemName = String(url.path.dropFirst(prefix.count))
+                    let resolvedURLPath = url.resolvingSymlinksInPath().path
+                    if resolvedURLPath.hasPrefix(resolvedPrefix) {
+                        itemName = String(resolvedURLPath.dropFirst(resolvedPrefix.count))
                     } else {
                         itemName = url.lastPathComponent
                     }
@@ -322,16 +331,27 @@ final class FilePanelViewModel: ObservableObject {
     }
 
     func selectAll() {
-        selectedIDs = Set(items.filter { !$0.isParentEntry }.map { $0.id })
+        let regularItems = items.filter { !$0.isParentEntry }
+        selectedIDs = Set(regularItems.map { $0.id })
+        if focusedItem == nil || focusedItem?.isParentEntry == true {
+            focusedItem = regularItems.first
+        }
     }
 
     func deselectAll() {
         selectedIDs.removeAll()
+        focusedItem = nil
     }
 
     func invertSelection() {
-        let allIDs = Set(items.filter { !$0.isParentEntry }.map { $0.id })
+        let regularItems = items.filter { !$0.isParentEntry }
+        let allIDs = Set(regularItems.map { $0.id })
         selectedIDs = allIDs.subtracting(selectedIDs)
+        if selectedIDs.isEmpty {
+            focusedItem = nil
+        } else if let currentFocused = focusedItem, !selectedIDs.contains(currentFocused.id) {
+            focusedItem = regularItems.first { selectedIDs.contains($0.id) }
+        }
     }
 
     // MARK: - 7-Zip Status Bar Metrics
@@ -366,7 +386,7 @@ final class FilePanelViewModel: ObservableObject {
         return focused.formattedModifiedDate
     }
 
-    private static func formatPosixPermissions(_ mode: UInt16, isDirectory: Bool, isSymlink: Bool) -> String {
+    static func formatPosixPermissions(_ mode: UInt16, isDirectory: Bool, isSymlink: Bool) -> String {
         var chars: [Character] = []
         if isSymlink {
             chars.append("l")

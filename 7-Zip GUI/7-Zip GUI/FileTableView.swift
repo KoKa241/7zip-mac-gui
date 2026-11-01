@@ -48,6 +48,7 @@ struct FileTableView: NSViewRepresentable {
         tableView.onFocusPanel = { [weak coordinator = context.coordinator] in
             coordinator?.parent.viewModel.onActivatePanel?()
         }
+        tableView.menu = context.coordinator.makeContextMenu()
 
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
@@ -254,6 +255,48 @@ struct FileTableView: NSViewRepresentable {
             let item = parent.viewModel.items[row]
             parent.viewModel.openItem(item)
         }
+
+        func makeContextMenu() -> NSMenu {
+            let menu = NSMenu(title: "Context")
+            let openItem = NSMenuItem(title: "Open", action: #selector(contextOpen(_:)), keyEquivalent: "")
+            openItem.target = self
+            menu.addItem(openItem)
+
+            let revealItem = NSMenuItem(title: "Show in Finder", action: #selector(contextShowInFinder(_:)), keyEquivalent: "")
+            revealItem.target = self
+            menu.addItem(revealItem)
+
+            menu.addItem(.separator())
+
+            let copyPathItem = NSMenuItem(title: "Copy Path", action: #selector(contextCopyPath(_:)), keyEquivalent: "")
+            copyPathItem.target = self
+            menu.addItem(copyPathItem)
+
+            return menu
+        }
+
+        private func targetItemForContextMenu() -> FileItem? {
+            guard let tableView = tableView else { return nil }
+            let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
+            guard row >= 0 && row < parent.viewModel.items.count else { return nil }
+            return parent.viewModel.items[row]
+        }
+
+        @objc func contextOpen(_ sender: Any?) {
+            guard let item = targetItemForContextMenu() else { return }
+            parent.viewModel.openItem(item)
+        }
+
+        @objc func contextShowInFinder(_ sender: Any?) {
+            guard let item = targetItemForContextMenu() else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([item.url])
+        }
+
+        @objc func contextCopyPath(_ sender: Any?) {
+            guard let item = targetItemForContextMenu() else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(item.url.path, forType: .string)
+        }
     }
 }
 
@@ -309,7 +352,7 @@ final class NameTableCellView: NSTableCellView {
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = NSFont.systemFont(ofSize: 12)
         label.lineBreakMode = .byTruncatingTail
-        label.TextColor = .labelColor
+        label.textColor = .labelColor
 
         addSubview(iconImageView)
         addSubview(label)
@@ -363,12 +406,5 @@ final class TextTableCellView: NSTableCellView {
 
     func configure(text: String) {
         label.stringValue = text
-    }
-}
-
-private extension NSTextField {
-    var TextColor: NSColor? {
-        get { textColor }
-        set { textColor = newValue }
     }
 }

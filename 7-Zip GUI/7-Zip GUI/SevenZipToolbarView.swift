@@ -10,7 +10,8 @@ struct ToolbarButtonDescriptor: Identifiable {
     let title: String
     let largeAssetName: String
     let smallAssetName: String
-    let fallbackSystemSymbol: String
+    let modernSymbolName: String
+    let tintColor: Color
     let tooltip: String
     let action: () -> Void
 }
@@ -25,7 +26,8 @@ struct SevenZipToolbarView: View {
                 title: "Add",
                 largeAssetName: "Toolbar_Add",
                 smallAssetName: "Toolbar_Add2",
-                fallbackSystemSymbol: "plus.rectangle.on.folder",
+                modernSymbolName: "plus.square.fill",
+                tintColor: Color(red: 0.16, green: 0.68, blue: 0.38),
                 tooltip: "Add files to archive",
                 action: { appViewModel.actionAdd() }
             ),
@@ -34,7 +36,8 @@ struct SevenZipToolbarView: View {
                 title: "Extract",
                 largeAssetName: "Toolbar_Extract",
                 smallAssetName: "Toolbar_Extract2",
-                fallbackSystemSymbol: "arrow.up.bin",
+                modernSymbolName: "arrow.up.bin.fill",
+                tintColor: Color(red: 0.18, green: 0.52, blue: 0.96),
                 tooltip: "Extract files from archive",
                 action: { appViewModel.actionExtract() }
             ),
@@ -43,7 +46,8 @@ struct SevenZipToolbarView: View {
                 title: "Test",
                 largeAssetName: "Toolbar_Test",
                 smallAssetName: "Toolbar_Test2",
-                fallbackSystemSymbol: "checkmark.shield",
+                modernSymbolName: "checkmark.shield.fill",
+                tintColor: Color(red: 0.15, green: 0.65, blue: 0.60),
                 tooltip: "Test archive integrity",
                 action: { appViewModel.actionTest() }
             )
@@ -57,7 +61,8 @@ struct SevenZipToolbarView: View {
                 title: "Copy",
                 largeAssetName: "Toolbar_Copy",
                 smallAssetName: "Toolbar_Copy2",
-                fallbackSystemSymbol: "doc.on.doc",
+                modernSymbolName: "doc.on.doc.fill",
+                tintColor: Color(red: 0.28, green: 0.50, blue: 0.88),
                 tooltip: "Copy selected items (F5)",
                 action: { appViewModel.actionCopy() }
             ),
@@ -66,7 +71,8 @@ struct SevenZipToolbarView: View {
                 title: "Move",
                 largeAssetName: "Toolbar_Move",
                 smallAssetName: "Toolbar_Move2",
-                fallbackSystemSymbol: "folder.badge.gearshape",
+                modernSymbolName: "folder.fill.badge.plus",
+                tintColor: Color(red: 0.90, green: 0.55, blue: 0.15),
                 tooltip: "Move selected items (F6)",
                 action: { appViewModel.actionMove() }
             ),
@@ -75,7 +81,8 @@ struct SevenZipToolbarView: View {
                 title: "Delete",
                 largeAssetName: "Toolbar_Delete",
                 smallAssetName: "Toolbar_Delete2",
-                fallbackSystemSymbol: "xmark.bin",
+                modernSymbolName: "trash.fill",
+                tintColor: Color(red: 0.88, green: 0.24, blue: 0.24),
                 tooltip: "Delete selected items (Del)",
                 action: { appViewModel.actionDelete() }
             ),
@@ -84,8 +91,9 @@ struct SevenZipToolbarView: View {
                 title: "Info",
                 largeAssetName: "Toolbar_Info",
                 smallAssetName: "Toolbar_Info2",
-                fallbackSystemSymbol: "info.circle",
-                tooltip: "File / Archive Properties (Alt+Enter)",
+                modernSymbolName: "info.circle.fill",
+                tintColor: Color(red: 0.52, green: 0.40, blue: 0.88),
+                tooltip: "File / Archive Properties (Cmd+I)",
                 action: { appViewModel.actionInfo() }
             )
         ]
@@ -93,11 +101,12 @@ struct SevenZipToolbarView: View {
 
     var body: some View {
         if appViewModel.showArchiveToolbar || appViewModel.showStandardToolbar {
-            HStack(spacing: 2) {
+            HStack(spacing: 4) {
                 if appViewModel.showArchiveToolbar {
                     ForEach(archiveButtons) { btn in
                         SevenZipToolbarButton(
                             descriptor: btn,
+                            iconStyle: appViewModel.toolbarIconStyle,
                             largeButtons: appViewModel.largeButtons,
                             showText: appViewModel.showButtonsText
                         )
@@ -106,7 +115,7 @@ struct SevenZipToolbarView: View {
 
                 if appViewModel.showArchiveToolbar && appViewModel.showStandardToolbar {
                     Divider()
-                        .frame(height: appViewModel.largeButtons ? 44 : 24)
+                        .frame(height: appViewModel.largeButtons ? 40 : 24)
                         .padding(.horizontal, 4)
                 }
 
@@ -114,6 +123,7 @@ struct SevenZipToolbarView: View {
                     ForEach(standardButtons) { btn in
                         SevenZipToolbarButton(
                             descriptor: btn,
+                            iconStyle: appViewModel.toolbarIconStyle,
                             largeButtons: appViewModel.largeButtons,
                             showText: appViewModel.showButtonsText
                         )
@@ -126,24 +136,43 @@ struct SevenZipToolbarView: View {
                 Button(action: {
                     appViewModel.toggleDualPane()
                 }) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         Image(systemName: appViewModel.isDualPane ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
+                            .font(.system(size: 13, weight: .medium))
                         Text(appViewModel.isDualPane ? "2 Panels" : "1 Panel")
-                            .font(.system(size: 11))
+                            .font(.system(size: 11, weight: .medium))
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
                     .background(
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(appViewModel.isDualPane ? Color.accentColor.opacity(0.15) : Color.clear)
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(appViewModel.isDualPane ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.05))
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityIdentifier("ToolbarButton_PanelToggle")
                 .help("Switch between 1 and 2 panels (F9)")
-                .padding(.trailing, 6)
+
+                // Settings / Preferences button
+                Button(action: {
+                    appViewModel.showSettingsSheet = true
+                }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .padding(6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.primary.opacity(0.05))
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityIdentifier("ToolbarButton_Settings")
+                .help("Options & Theme Settings (Cmd+,)")
+                .padding(.trailing, 4)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
             .background(Color(NSColor.windowBackgroundColor))
         }
     }
@@ -151,6 +180,7 @@ struct SevenZipToolbarView: View {
 
 struct SevenZipToolbarButton: View {
     let descriptor: ToolbarButtonDescriptor
+    let iconStyle: ToolbarIconStyle
     let largeButtons: Bool
     let showText: Bool
 
@@ -158,34 +188,32 @@ struct SevenZipToolbarButton: View {
 
     var body: some View {
         Button(action: descriptor.action) {
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 iconView
-                    .frame(
-                        width: largeButtons ? 48 : 24,
-                        height: largeButtons ? 36 : 24
-                    )
 
                 if showText {
                     Text(descriptor.title)
-                        .font(.system(size: 11))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.primary)
                         .lineLimit(1)
                 }
             }
             .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .frame(minWidth: largeButtons ? 58 : 36)
+            .padding(.vertical, 4)
+            .frame(minWidth: largeButtons ? 56 : 36)
             .background(
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: 6)
                     .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(isHovered ? Color.primary.opacity(0.18) : Color.clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isHovered ? Color.primary.opacity(0.15) : Color.clear, lineWidth: 1)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityIdentifier("ToolbarButton_\(descriptor.id)")
+        .accessibilityLabel(Text(descriptor.title))
         .help(descriptor.tooltip)
         .onHover { hovering in
             isHovered = hovering
@@ -194,15 +222,43 @@ struct SevenZipToolbarButton: View {
 
     @ViewBuilder
     private var iconView: some View {
-        let assetName = largeButtons ? descriptor.largeAssetName : descriptor.smallAssetName
-        if let nsImage = NSImage(named: assetName) {
-            Image(nsImage: nsImage)
-                .interpolation(.none)
-                .resizable()
-                .scaledToFit()
+        if iconStyle == .modern {
+            ZStack {
+                RoundedRectangle(cornerRadius: largeButtons ? 8 : 5)
+                    .fill(descriptor.tintColor.opacity(0.15))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: largeButtons ? 8 : 5)
+                            .stroke(descriptor.tintColor.opacity(0.32), lineWidth: 0.8)
+                    )
+
+                Image(systemName: descriptor.modernSymbolName)
+                    .font(.system(size: largeButtons ? 17 : 12, weight: .semibold))
+                    .foregroundColor(descriptor.tintColor)
+            }
+            .frame(
+                width: largeButtons ? 34 : 22,
+                height: largeButtons ? 30 : 22
+            )
         } else {
-            Image(systemName: descriptor.fallbackSystemSymbol)
-                .font(.system(size: largeButtons ? 22 : 15))
+            let assetName = largeButtons ? descriptor.largeAssetName : descriptor.smallAssetName
+            if let nsImage = NSImage(named: assetName) {
+                Image(nsImage: nsImage)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(
+                        width: largeButtons ? 48 : 24,
+                        height: largeButtons ? 36 : 24
+                    )
+            } else {
+                Image(systemName: descriptor.modernSymbolName)
+                    .font(.system(size: largeButtons ? 20 : 14))
+                    .foregroundColor(descriptor.tintColor)
+                    .frame(
+                        width: largeButtons ? 34 : 22,
+                        height: largeButtons ? 30 : 22
+                    )
+            }
         }
     }
 }

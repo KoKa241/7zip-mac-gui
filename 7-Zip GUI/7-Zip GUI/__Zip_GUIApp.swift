@@ -25,8 +25,16 @@ struct SevenZipMenuCommands: Commands {
     @ObservedObject var appViewModel: FileManagerAppViewModel
 
     var body: some Commands {
+        // App Preferences Menu (Cmd+,)
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings...") {
+                appViewModel.showSettingsSheet = true
+            }
+            .keyboardShortcut(",", modifiers: [.command])
+        }
+
         // File Menu Additions
-        CommandGroup(replacing: .newItem) {
+        CommandGroup(after: .newItem) {
             Button("Open") {
                 if let focused = appViewModel.activePanel.focusedItem {
                     appViewModel.activePanel.openItem(focused)
@@ -156,7 +164,28 @@ struct SevenZipMenuCommands: Commands {
                 Divider()
                 Toggle("Large Buttons", isOn: $appViewModel.largeButtons)
                 Toggle("Show Buttons Text", isOn: $appViewModel.showButtonsText)
+                Divider()
+                Picker("Icon Style", selection: $appViewModel.toolbarIconStyle) {
+                    ForEach(ToolbarIconStyle.allCases) { style in
+                        Text(style.title).tag(style)
+                    }
+                }
             }
+
+            Menu("Theme") {
+                Picker("Theme", selection: $appViewModel.appTheme) {
+                    ForEach(AppTheme.allCases) { theme in
+                        Text(theme.title).tag(theme)
+                    }
+                }
+            }
+
+            Divider()
+
+            Button("Options / Settings...") {
+                appViewModel.showSettingsSheet = true
+            }
+            .keyboardShortcut(",", modifiers: [.command])
 
             Divider()
 
