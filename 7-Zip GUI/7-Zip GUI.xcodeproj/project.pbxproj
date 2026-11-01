@@ -1,0 +1,548 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		F537E26D30978F7E00EC8664 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F537E25630978F7D00EC8664 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F537E25D30978F7D00EC8664;
+			remoteInfo = "7-Zip GUI";
+		};
+		F537E27730978F7E00EC8664 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F537E25630978F7D00EC8664 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F537E25D30978F7D00EC8664;
+			remoteInfo = "7-Zip GUI";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		F537E25E30978F7D00EC8664 /* 7-Zip GUI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "7-Zip GUI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F537E26C30978F7E00EC8664 /* 7-Zip GUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "7-Zip GUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F537E27630978F7E00EC8664 /* 7-Zip GUIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "7-Zip GUIUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		F537E26030978F7D00EC8664 /* 7-Zip GUI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "7-Zip GUI";
+			sourceTree = "<group>";
+		};
+		F537E26F30978F7E00EC8664 /* 7-Zip GUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "7-Zip GUITests";
+			sourceTree = "<group>";
+		};
+		F537E27930978F7E00EC8664 /* 7-Zip GUIUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "7-Zip GUIUITests";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F537E25B30978F7D00EC8664 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F537E26930978F7E00EC8664 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F537E27330978F7E00EC8664 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		F537E25530978F7D00EC8664 = {
+			isa = PBXGroup;
+			children = (
+				F537E26030978F7D00EC8664 /* 7-Zip GUI */,
+				F537E26F30978F7E00EC8664 /* 7-Zip GUITests */,
+				F537E27930978F7E00EC8664 /* 7-Zip GUIUITests */,
+				F537E25F30978F7D00EC8664 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		F537E25F30978F7D00EC8664 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F537E25E30978F7D00EC8664 /* 7-Zip GUI.app */,
+				F537E26C30978F7E00EC8664 /* 7-Zip GUITests.xctest */,
+				F537E27630978F7E00EC8664 /* 7-Zip GUIUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F537E25D30978F7D00EC8664 /* 7-Zip GUI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F537E28030978F7E00EC8664 /* Build configuration list for PBXNativeTarget "7-Zip GUI" */;
+			buildPhases = (
+				F537E25A30978F7D00EC8664 /* Sources */,
+				F537E25B30978F7D00EC8664 /* Frameworks */,
+				F537E25C30978F7D00EC8664 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				F537E26030978F7D00EC8664 /* 7-Zip GUI */,
+			);
+			name = "7-Zip GUI";
+			packageProductDependencies = (
+			);
+			productName = "7-Zip GUI";
+			productReference = F537E25E30978F7D00EC8664 /* 7-Zip GUI.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F537E26B30978F7E00EC8664 /* 7-Zip GUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F537E28330978F7E00EC8664 /* Build configuration list for PBXNativeTarget "7-Zip GUITests" */;
+			buildPhases = (
+				F537E26830978F7E00EC8664 /* Sources */,
+				F537E26930978F7E00EC8664 /* Frameworks */,
+				F537E26A30978F7E00EC8664 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F537E26E30978F7E00EC8664 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				F537E26F30978F7E00EC8664 /* 7-Zip GUITests */,
+			);
+			name = "7-Zip GUITests";
+			packageProductDependencies = (
+			);
+			productName = "7-Zip GUITests";
+			productReference = F537E26C30978F7E00EC8664 /* 7-Zip GUITests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		F537E27530978F7E00EC8664 /* 7-Zip GUIUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F537E28630978F7E00EC8664 /* Build configuration list for PBXNativeTarget "7-Zip GUIUITests" */;
+			buildPhases = (
+				F537E27230978F7E00EC8664 /* Sources */,
+				F537E27330978F7E00EC8664 /* Frameworks */,
+				F537E27430978F7E00EC8664 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F537E27830978F7E00EC8664 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				F537E27930978F7E00EC8664 /* 7-Zip GUIUITests */,
+			);
+			name = "7-Zip GUIUITests";
+			packageProductDependencies = (
+			);
+			productName = "7-Zip GUIUITests";
+			productReference = F537E27630978F7E00EC8664 /* 7-Zip GUIUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F537E25630978F7D00EC8664 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					F537E25D30978F7D00EC8664 = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					F537E26B30978F7E00EC8664 = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = F537E25D30978F7D00EC8664;
+					};
+					F537E27530978F7E00EC8664 = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = F537E25D30978F7D00EC8664;
+					};
+				};
+			};
+			buildConfigurationList = F537E25930978F7D00EC8664 /* Build configuration list for PBXProject "7-Zip GUI" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = F537E25530978F7D00EC8664;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F537E25F30978F7D00EC8664 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F537E25D30978F7D00EC8664 /* 7-Zip GUI */,
+				F537E26B30978F7E00EC8664 /* 7-Zip GUITests */,
+				F537E27530978F7E00EC8664 /* 7-Zip GUIUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F537E25C30978F7D00EC8664 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F537E26A30978F7E00EC8664 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F537E27430978F7E00EC8664 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F537E25A30978F7D00EC8664 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F537E26830978F7E00EC8664 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F537E27230978F7E00EC8664 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F537E26E30978F7E00EC8664 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F537E25D30978F7D00EC8664 /* 7-Zip GUI */;
+			targetProxy = F537E26D30978F7E00EC8664 /* PBXContainerItemProxy */;
+		};
+		F537E27830978F7E00EC8664 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F537E25D30978F7D00EC8664 /* 7-Zip GUI */;
+			targetProxy = F537E27730978F7E00EC8664 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		F537E27E30978F7E00EC8664 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		F537E27F30978F7E00EC8664 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		F537E28130978F7E00EC8664 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "7-Zip GUI/__Zip_GUI.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.koka.7-zip.--Zip-GUI";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		F537E28230978F7E00EC8664 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "7-Zip GUI/__Zip_GUI.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.koka.7-zip.--Zip-GUI";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		F537E28430978F7E00EC8664 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.koka.7-zip.--Zip-GUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/7-Zip GUI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/7-Zip GUI";
+			};
+			name = Debug;
+		};
+		F537E28530978F7E00EC8664 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.koka.7-zip.--Zip-GUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/7-Zip GUI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/7-Zip GUI";
+			};
+			name = Release;
+		};
+		F537E28730978F7E00EC8664 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.koka.7-zip.--Zip-GUIUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = "7-Zip GUI";
+			};
+			name = Debug;
+		};
+		F537E28830978F7E00EC8664 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.koka.7-zip.--Zip-GUIUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = "7-Zip GUI";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		F537E25930978F7D00EC8664 /* Build configuration list for PBXProject "7-Zip GUI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F537E27E30978F7E00EC8664 /* Debug */,
+				F537E27F30978F7E00EC8664 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F537E28030978F7E00EC8664 /* Build configuration list for PBXNativeTarget "7-Zip GUI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F537E28130978F7E00EC8664 /* Debug */,
+				F537E28230978F7E00EC8664 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F537E28330978F7E00EC8664 /* Build configuration list for PBXNativeTarget "7-Zip GUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F537E28430978F7E00EC8664 /* Debug */,
+				F537E28530978F7E00EC8664 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F537E28630978F7E00EC8664 /* Build configuration list for PBXNativeTarget "7-Zip GUIUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F537E28730978F7E00EC8664 /* Debug */,
+				F537E28830978F7E00EC8664 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = F537E25630978F7D00EC8664 /* Project object */;
+}
