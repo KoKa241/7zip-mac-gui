@@ -30,7 +30,7 @@ struct FilePropertiesSheet: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
-                propertyRow("Path:", item.url.path)
+                propertyRow("Path:", item.archiveInternalPath ?? item.url.path)
                 if !item.isDirectory {
                     propertyRow("Size:", "\(FileItem.format7ZipNumber(item.size)) bytes")
                     propertyRow("Packed / Disk Size:", "\(FileItem.format7ZipNumber(item.packedSize)) bytes")
@@ -39,6 +39,15 @@ struct FilePropertiesSheet: View {
                 propertyRow("Created:", item.formattedCreatedDate)
                 propertyRow("Accessed:", item.formattedAccessedDate)
                 propertyRow("Attributes:", item.posixPermissions)
+                if !item.method.isEmpty {
+                    propertyRow("Method:", item.method)
+                }
+                if !item.crc.isEmpty {
+                    propertyRow("CRC:", item.crc)
+                }
+                if item.archiveInternalPath != nil {
+                    propertyRow("Encrypted:", item.isEncrypted ? "+" : "-")
+                }
             }
 
             Spacer()
@@ -52,7 +61,7 @@ struct FilePropertiesSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 440, height: 310)
+        .frame(width: 460, height: 370)
     }
 
     private func propertyRow(_ label: String, _ value: String) -> some View {

@@ -10,6 +10,13 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var appViewModel: FileManagerAppViewModel
 
+    private var sheetPresentationBinding: Binding<Bool> {
+        Binding(
+            get: { appViewModel.activeModalSheet != nil },
+            set: { if !$0 { appViewModel.activeModalSheet = nil } }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Top 7-Zip Toolbar (Add, Extract, Test | Copy, Move, Delete, Info)
@@ -46,14 +53,48 @@ struct ContentView: View {
         }
         .frame(minWidth: 780, minHeight: 500)
         .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
-        .sheet(isPresented: $appViewModel.showInfoSheet) {
-            if let item = appViewModel.infoItem {
-                FilePropertiesSheet(item: item, isPresented: $appViewModel.showInfoSheet)
+        .sheet(item: $appViewModel.activeModalSheet) { sheet in
+            switch sheet {
+            case .info(let item):
+                FilePropertiesSheet(item: item, isPresented: sheetPresentationBinding)
                     .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
+
+            case .settings:
+                SettingsView(appViewModel: appViewModel, isPresented: sheetPresentationBinding)
+                    .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
+
+            case .addArchive(let sourceDirectory, let sourceItems):
+                AddArchiveSheet(
+                    appViewModel: appViewModel,
+                    sourceDirectory: sourceDirectory,
+                    sourceItems: sourceItems,
+                    isPresented: sheetPresentationBinding
+                )
+                .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
+
+            case .extractArchive(let archivePath, let internalPaths, let defaultDestination, let initialPassword):
+                ExtractArchiveSheet(
+                    appViewModel: appViewModel,
+                    archivePath: archivePath,
+                    internalPaths: internalPaths,
+                    defaultDestination: defaultDestination,
+                    initialPassword: initialPassword,
+                    isPresented: sheetPresentationBinding
+                )
+                .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
+
+            case .copyMove(let operation, let sourceItems, let sourceArchivePath, let sourceArchivePassword, let defaultDestination):
+                CopyMoveSheet(
+                    appViewModel: appViewModel,
+                    operation: operation,
+                    sourceItems: sourceItems,
+                    sourceArchivePath: sourceArchivePath,
+                    sourceArchivePassword: sourceArchivePassword,
+                    defaultDestination: defaultDestination,
+                    isPresented: sheetPresentationBinding
+                )
+                .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
             }
-        }
-        .sheet(isPresented: $appViewModel.showSettingsSheet) {
-            SettingsView(appViewModel: appViewModel, isPresented: $appViewModel.showSettingsSheet)
         }
     }
 }

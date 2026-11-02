@@ -16,7 +16,7 @@ final class __Zip_GUITests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        let baseTemp = FileManager.default.temporaryDirectory
+        let baseTemp = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
         tempDirectoryURL = baseTemp.appendingPathComponent("7ZipGUITests_\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDirectoryURL, withIntermediateDirectories: true)
     }
@@ -302,5 +302,249 @@ final class __Zip_GUITests: XCTestCase {
 
         // Reset back to modern default
         appVM.toolbarIconStyle = .modern
+    }
+
+    // MARK: - 6. 7-Zip Engine Integration & Archive Browsing Tests
+
+    func testSevenZipEngineCreateListTestAndExtract7zArchive() throws {
+        let srcDir = tempDirectoryURL.appendingPathComponent("src", isDirectory: true)
+        let subDir = srcDir.appendingPathComponent("SubDir", isDirectory: true)
+        try FileManager.default.createDirectory(at: subDir, withIntermediateDirectories: true)
+
+        let rootFile = srcDir.appendingPathComponent("root.txt")
+        let nestedFile = subDir.appendingPathComponent("nested.txt")
+        try Data("Hello from 7-Zip root!".utf8).write(to: rootFile)
+        try Data("Nested file content 12345".utf8).write(to: nestedFile)
+
+        let archiveURL = tempDirectoryURL.appendingPathComponent("test_bundle.7z")
+
+        // 1. Create .7z archive
+        try SevenZipEngine.shared.createArchive(
+            archivePath: archiveURL.path,
+            format: .sevenZ,
+            level: .normal,
+            solid: true,
+            sourcePaths: ["root.txt", "SubDir"],
+            workingDirectory: srcDir.path
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archiveURL.path))
+
+        // 2. Test archive integrity
+        let testResult = try SevenZipEngine.shared.testArchive(archivePath: archiveURL.path)
+        XCTAssertTrue(testResult.isSuccess)
+        XCTAssertTrue(testResult.output.contains("Everything is Ok"))
+
+        // 3. List archive contents
+        let listing = try SevenZipEngine.shared.listArchive(at: archiveURL.path)
+        XCTAssertEqual(listing.archiveType, "7z")
+        XCTAssertTrue(listing.entries.contains { $0.path == "root.txt" && $0.size == 22 })
+        XCTAssertTrue(listing.entries.contains { $0.path == "SubDir/nested.txt" && $0.size == 25 })
+
+        // 4. Extract archive to destination directory
+        let outDir = tempDirectoryURL.appendingPathComponent("extracted", isDirectory: true)
+        try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        try SevenZipEngine.shared.extractArchive(
+            archivePath: archiveURL.path,
+            destinationPath: outDir.path
+        )
+
+        let extractedRoot = try String(contentsOf: outDir.appendingPathComponent("root.txt"), encoding: .utf8)
+        let extractedNested = try String(contentsOf: outDir.appendingPathComponent("SubDir/nested.txt"), encoding: .utf8)
+        XCTAssertEqual(extractedRoot, "Hello from 7-Zip root!")
+        XCTAssertEqual(extractedNested, "Nested file content 12345")
+    }
+
+    func testSevenZipEngineEncryptedArchiveWithPassword() throws {
+        let secretFile = tempDirectoryURL.appendingPathComponent("secret.txt")
+        try Data("Top secret payload".utf8).write(to: secretFile)
+
+        let archiveURL = tempDirectoryURL.appendingPathComponent("encrypted.7z")
+        try SevenZipEngine.shared.createArchive(
+            archivePath: archiveURL.path,
+            format: .sevenZ,
+            level: .fast,
+            password: "MySecretPassword123",
+            encryptHeaders: true,
+            sourcePaths: ["secret.txt"],
+            workingDirectory: tempDirectoryURL.path
+        )
+
+        // Listing without password should throw passwordRequired
+        XCTAssertThrowsError(try SevenZipEngine.shared.listArchive(at: archiveURL.path)) { error in
+            guard case SevenZipError.passwordRequired = error else {
+                XCTFail("Expected passwordRequired, got \(error)")
+                return
+            }
+        }
+
+        // Listing with correct password succeeds
+        let listing = try SevenZipEngine.shared.listArchive(at: archiveURL.path, password: "MySecretPassword123")
+        XCTAssertEqual(listing.entries.count, 1)
+        XCTAssertEqual(listing.entries.first?.path, "secret.txt")
+    }
+
+    func testBrowsingInsideArchiveAndNavigatingUp() throws {
+        let srcDir = tempDirectoryURL.appendingPathComponent("zip_src", isDirectory: true)
+        let folderA = srcDir.appendingPathComponent("FolderA", isDirectory: true)
+        try FileManager.default.createDirectory(at: folderA, withIntermediateDirectories: true)
+        try Data("top".utf8).write(to: srcDir.appendingPathComponent("top.txt"))
+        try Data("inside".utf8).write(to: folderA.appendingPathComponent("inside.txt"))
+
+        let zipURL = tempDirectoryURL.appendingPathComponent("browse.zip")
+        try SevenZipEngine.shared.createArchive(
+            archivePath: zipURL.path,
+            format: .zip,
+            level: .normal,
+            sourcePaths: ["top.txt", "FolderA"],
+            workingDirectory: srcDir.path
+        )
+
+        let vm = FilePanelViewModel(panelIndex: 0, initialPath: tempDirectoryURL.path)
+        XCTAssertFalse(vm.isInsideArchive)
+
+        // Open browse.zip in panel
+        let zipItem = try XCTUnwrap(vm.items.first { $0.name == "browse.zip" })
+        vm.openItem(zipItem)
+
+        XCTAssertTrue(vm.isInsideArchive)
+        XCTAssertEqual(vm.currentArchivePath, zipURL.path)
+        XCTAssertEqual(vm.archiveInternalPrefix, "")
+        XCTAssertEqual(vm.totalObjectCount, 2) // FolderA and top.txt
+
+        // Enter FolderA inside the archive
+        let folderAItem = try XCTUnwrap(vm.items.first { $0.name == "FolderA" && $0.isDirectory })
+        vm.openItem(folderAItem)
+
+        XCTAssertTrue(vm.isInsideArchive)
+        XCTAssertEqual(vm.archiveInternalPrefix, "FolderA/")
+        XCTAssertEqual(vm.totalObjectCount, 1)
+        XCTAssertEqual(vm.items.first { !$0.isParentEntry }?.name, "inside.txt")
+
+        // Navigate up once -> back to root of archive
+        vm.navigateUp()
+        XCTAssertTrue(vm.isInsideArchive)
+        XCTAssertEqual(vm.archiveInternalPrefix, "")
+
+        // Navigate up again -> exits archive back to tempDirectoryURL
+        vm.navigateUp()
+        XCTAssertFalse(vm.isInsideArchive)
+        XCTAssertNil(vm.currentArchivePath)
+        XCTAssertEqual(vm.currentPath, tempDirectoryURL.standardizedFileURL.path)
+    }
+
+    func testDeleteFromArchiveAndFilesystemCopyMove() throws {
+        let f1 = tempDirectoryURL.appendingPathComponent("keep.txt")
+        let f2 = tempDirectoryURL.appendingPathComponent("remove.txt")
+        try Data("keep".utf8).write(to: f1)
+        try Data("remove".utf8).write(to: f2)
+
+        let archiveURL = tempDirectoryURL.appendingPathComponent("modifiable.7z")
+        try SevenZipEngine.shared.createArchive(
+            archivePath: archiveURL.path,
+            format: .sevenZ,
+            level: .fast,
+            sourcePaths: ["keep.txt", "remove.txt"],
+            workingDirectory: tempDirectoryURL.path
+        )
+
+        try SevenZipEngine.shared.deleteFromArchive(
+            archivePath: archiveURL.path,
+            internalPaths: ["remove.txt"]
+        )
+
+        let listing = try SevenZipEngine.shared.listArchive(at: archiveURL.path)
+        XCTAssertEqual(listing.entries.map { $0.path }, ["keep.txt"])
+
+        // Test filesystem Copy & Move via FileManagerAppViewModel
+        let appVM = FileManagerAppViewModel()
+        let destDir = tempDirectoryURL.appendingPathComponent("dest_panel", isDirectory: true)
+        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+
+        appVM.leftPanel.navigateTo(path: tempDirectoryURL.path)
+        let keepItem = try XCTUnwrap(appVM.leftPanel.items.first { $0.name == "keep.txt" })
+
+        try appVM.performFilesystemCopyMove(items: [keepItem], toDirectory: destDir.path, isMove: false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destDir.appendingPathComponent("keep.txt").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: f1.path))
+
+        let removeItem = try XCTUnwrap(appVM.leftPanel.items.first { $0.name == "remove.txt" })
+        try appVM.performFilesystemCopyMove(items: [removeItem], toDirectory: destDir.path, isMove: true)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destDir.appendingPathComponent("remove.txt").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f2.path))
+    }
+
+    func testToolbarActionsPresentModalSheets() throws {
+        let sampleFile = tempDirectoryURL.appendingPathComponent("doc.txt")
+        try Data("hello".utf8).write(to: sampleFile)
+
+        let archiveURL = tempDirectoryURL.appendingPathComponent("sample.7z")
+        try SevenZipEngine.shared.createArchive(
+            archivePath: archiveURL.path,
+            format: .sevenZ,
+            level: .fast,
+            sourcePaths: ["doc.txt"],
+            workingDirectory: tempDirectoryURL.path
+        )
+
+        let appVM = FileManagerAppViewModel()
+        appVM.leftPanel.navigateTo(path: tempDirectoryURL.path)
+
+        // 1. Add button works even without explicit selection (selects folder items)
+        appVM.actionAdd()
+        if case .addArchive(let dir, let items) = appVM.activeModalSheet {
+            XCTAssertEqual(dir, tempDirectoryURL.standardizedFileURL.path)
+            XCTAssertEqual(items.count, 2)
+        } else {
+            XCTFail("Expected .addArchive modal sheet")
+        }
+        appVM.activeModalSheet = nil
+
+        // 2. Extract button automatically finds sample.7z in current folder
+        appVM.actionExtract()
+        if case .extractArchive(let path, _, _, _) = appVM.activeModalSheet {
+            XCTAssertEqual(URL(fileURLWithPath: path).standardizedFileURL, archiveURL.standardizedFileURL)
+        } else {
+            XCTFail("Expected .extractArchive modal sheet")
+        }
+        appVM.activeModalSheet = nil
+
+        // 3. Select doc.txt and test Copy, Move, Info
+        let docItem = try XCTUnwrap(appVM.leftPanel.items.first { $0.name == "doc.txt" })
+        appVM.leftPanel.updateSelection(ids: [docItem.id], focused: docItem)
+
+        appVM.actionCopy()
+        if case .copyMove(let op, let items, _, _, _) = appVM.activeModalSheet {
+            XCTAssertEqual(op.title, "Copy")
+            XCTAssertEqual(items.map { $0.name }, ["doc.txt"])
+        } else {
+            XCTFail("Expected .copyMove(Copy) modal sheet")
+        }
+        appVM.activeModalSheet = nil
+
+        appVM.actionMove()
+        if case .copyMove(let op, let items, _, _, _) = appVM.activeModalSheet {
+            XCTAssertEqual(op.title, "Move")
+            XCTAssertEqual(items.map { $0.name }, ["doc.txt"])
+        } else {
+            XCTFail("Expected .copyMove(Move) modal sheet")
+        }
+        appVM.activeModalSheet = nil
+
+        appVM.actionInfo()
+        XCTAssertTrue(appVM.showInfoSheet)
+        appVM.showInfoSheet = false
+        XCTAssertNil(appVM.activeModalSheet)
+
+        // 4. Settings button
+        appVM.showSettingsSheet = true
+        XCTAssertTrue(appVM.showSettingsSheet)
+        appVM.showSettingsSheet = false
+        XCTAssertNil(appVM.activeModalSheet)
+
+        // 5. Test Duplicate & ArchiveBaseName context menu helpers
+        XCTAssertEqual(appVM.ArchiveBaseName(for: [docItem], in: tempDirectoryURL.path), "doc")
+        appVM.actionDuplicate(items: [docItem], in: appVM.leftPanel)
+        let dupURL = tempDirectoryURL.appendingPathComponent("doc copy.txt")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dupURL.path))
     }
 }

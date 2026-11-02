@@ -134,7 +134,7 @@ struct FileTableView: NSViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
         var parent: FileTableView
         weak var tableView: NSTableView?
         var lastItems: [FileItem] = []
@@ -258,21 +258,156 @@ struct FileTableView: NSViewRepresentable {
 
         func makeContextMenu() -> NSMenu {
             let menu = NSMenu(title: "Context")
-            let openItem = NSMenuItem(title: "Open", action: #selector(contextOpen(_:)), keyEquivalent: "")
-            openItem.target = self
-            menu.addItem(openItem)
+            menu.delegate = self
+            return menu
+        }
 
-            let revealItem = NSMenuItem(title: "Show in Finder", action: #selector(contextShowInFinder(_:)), keyEquivalent: "")
-            revealItem.target = self
-            menu.addItem(revealItem)
+        func menuNeedsUpdate(_ menu: NSMenu) {
+            menu.removeAllItems()
+            parent.viewModel.onActivatePanel?()
+
+            let vm = parent.viewModel
+            if let tableView = tableView {
+                let clickedRow = tableView.clickedRow
+                if clickedRow >= 0 && clickedRow < vm.items.count {
+                    let clickedItem = vm.items[clickedRow]
+                    if !clickedItem.isParentEntry {
+                        if !vm.selectedIDs.contains(clickedItem.id) {
+                            isProgrammaticUpdate = true
+                            tableView.selectRowIndexes(IndexSet(integer: clickedRow), byExtendingSelection: false)
+                            isProgrammaticUpdate = false
+                            lastSelectedIDs = [clickedItem.id]
+                            vm.updateSelection(ids: [clickedItem.id], focused: clickedItem)
+                        } else {
+                            vm.updateSelection(ids: vm.selectedIDs, focused: clickedItem)
+                        }
+                    }
+                }
+            }
+
+            let targetItems = targetItemsForContextMenu()
+            let singleItem = targetItems.count == 1 ? targetItems.first : nil
+            let clickedParentEntry: Bool = {
+                guard let tableView = tableView, tableView.clickedRow >= 0, tableView.clickedRow < vm.items.count else {
+                    return false
+                }
+                return vm.items[tableView.clickedRow].isParentEntry
+            }()
+
+            if clickedParentEntry {
+                menu.addItem(makeMenuItem("Up One Level", action: #selector(contextOpenParent(_:)), symbol: "arrow.turn.left.up"))
+                menu.addItem(.separator())
+                menu.addItem(makeMenuItem("Refresh", action: #selector(contextRefresh(_:)), symbol: "arrow.clockwise"))
+                return
+            }
+
+            // 1. Open / Reveal section
+            if let item = singleItem {
+                if !vm.isInsideArchive && !item.isDirectory && SevenZipEngine.isArchiveFile(url: item.url) {
+                    menu.addItem(makeMenuItem("Open Inside 7-Zip", action: #selector(contextOpen(_:)), symbol: "doc.zipper"))
+                    menu.addItem(makeMenuItem("Open With Default App", action: #selector(contextOpenExternal(_:)), symbol: "arrow.up.forward.app"))
+                } else {
+                    menu.addItem(makeMenuItem("Open", action: #selector(contextOpen(_:)), symbol: item.isDirectory ? "folder" : "doc.text"))
+                }
+            }
+
+            if !vm.isInsideArchive {
+                let revealTitle = targetItems.isEmpty ? "Show Folder in Finder" : "Show in Finder"
+                menu.addItem(makeMenuItem(revealTitle, action: #selector(contextShowInFinder(_:)), symbol: "finder"))
+            }
 
             menu.addItem(.separator())
 
-            let copyPathItem = NSMenuItem(title: "Copy Path", action: #selector(contextCopyPath(_:)), keyEquivalent: "")
-            copyPathItem.target = self
-            menu.addItem(copyPathItem)
+            // 2. 7-Zip Archive Operations section
+            if !vm.isInsideArchive && !targetItems.isEmpty {
+                let baseName = vm.appViewModel?.ArchiveBaseName(for: targetItems, in: vm.currentPath) ?? "archive"
+                menu.addItem(makeMenuItem("Add to Archive...", action: #selector(contextAddToArchive(_:)), symbol: "plus.rectangle.on.folder"))
+                menu.addItem(makeMenuItem("Add to \"\(baseName).7z\"", action: #selector(contextQuickAdd7z(_:)), symbol: "bolt.fill"))
+                menu.addItem(makeMenuItem("Add to \"\(baseName).zip\"", action: #selector(contextQuickAddZip(_:)), symbol: "bolt"))
+            }
 
-            return menu
+            let isTargetArchiveFile = !vm.isInsideArchive && singleItem != nil && !singleItem!.isDirectory && SevenZipEngine.isArchiveFile(url: singleItem!.url)
+            if isTargetArchiveFile || vm.isInsideArchive {
+                if !vm.isInsideArchive {
+                    menu.addItem(.separator())
+                }
+                menu.addItem(makeMenuItem("Extract Files...", action: #selector(contextExtractDialog(_:)), symbol: "arrow.up.bin"))
+
+                if let archiveItem = singleItem, isTargetArchiveFile {
+                    let folderBase = (archiveItem.name as NSString).deletingPathExtension
+                    menu.addItem(makeMenuItem("Extract Here", action: #selector(contextExtractHere(_:)), symbol: "tray.and.arrow.down"))
+                    menu.addItem(makeMenuItem("Extract to \"\(folderBase)/\"", action: #selector(contextExtractToSubfolder(_:)), symbol: "folder.badge.plus"))
+                }
+
+                menu.addItem(makeMenuItem("Test Archive", action: #selector(contextTestArchive(_:)), symbol: "checkmark.shield"))
+            }
+
+            menu.addItem(.separator())
+
+            // 3. File Management section (Copy, Move, Duplicate, Rename, New Folder, Delete)
+            if !targetItems.isEmpty {
+                menu.addItem(makeMenuItem("Copy To... (F5)", action: #selector(contextCopyTo(_:)), symbol: "doc.on.doc"))
+                menu.addItem(makeMenuItem("Move To... (F6)", action: #selector(contextMoveTo(_:)), symbol: "folder.badge.gearshape"))
+
+                if !vm.isInsideArchive {
+                    menu.addItem(makeMenuItem("Duplicate", action: #selector(contextDuplicate(_:)), symbol: "plus.square.on.square"))
+                    if singleItem != nil {
+                        menu.addItem(makeMenuItem("Rename...", action: #selector(contextRename(_:)), symbol: "pencil"))
+                    }
+                }
+            }
+
+            if !vm.isInsideArchive {
+                menu.addItem(makeMenuItem("New Folder... (F7)", action: #selector(contextNewFolder(_:)), symbol: "folder.badge.plus"))
+            }
+
+            if !targetItems.isEmpty {
+                let deleteTitle = vm.isInsideArchive ? "Delete from Archive" : "Move to Trash"
+                menu.addItem(makeMenuItem(deleteTitle, action: #selector(contextDelete(_:)), symbol: "trash"))
+            }
+
+            menu.addItem(.separator())
+
+            // 4. Clipboard & Selection section
+            if !targetItems.isEmpty {
+                if !vm.isInsideArchive {
+                    menu.addItem(makeMenuItem("Copy File to Clipboard", action: #selector(contextCopyFilesToClipboard(_:)), symbol: "doc.on.clipboard"))
+                }
+                menu.addItem(makeMenuItem("Copy Path", action: #selector(contextCopyPath(_:)), symbol: "link"))
+                menu.addItem(makeMenuItem("Copy Name", action: #selector(contextCopyName(_:)), symbol: "textformat"))
+                menu.addItem(.separator())
+            }
+
+            menu.addItem(makeMenuItem("Select All", action: #selector(contextSelectAll(_:)), symbol: "checkmark.circle"))
+            menu.addItem(makeMenuItem("Invert Selection", action: #selector(contextInvertSelection(_:)), symbol: "arrow.triangle.2.circlepath"))
+            menu.addItem(makeMenuItem("Refresh", action: #selector(contextRefresh(_:)), symbol: "arrow.clockwise"))
+
+            menu.addItem(.separator())
+
+            // 5. Properties / Info
+            menu.addItem(makeMenuItem("Properties / Info", action: #selector(contextProperties(_:)), symbol: "info.circle"))
+        }
+
+        private func makeMenuItem(_ title: String, action: Selector, symbol: String) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: title) {
+                img.isTemplate = true
+                item.image = img
+            }
+            return item
+        }
+
+        private func targetItemsForContextMenu() -> [FileItem] {
+            let vm = parent.viewModel
+            let selected = vm.effectiveSelectedItems
+            if !selected.isEmpty {
+                return selected
+            }
+            if let item = targetItemForContextMenu(), !item.isParentEntry {
+                return [item]
+            }
+            return []
         }
 
         private func targetItemForContextMenu() -> FileItem? {
@@ -282,20 +417,123 @@ struct FileTableView: NSViewRepresentable {
             return parent.viewModel.items[row]
         }
 
+        @objc func contextOpenParent(_ sender: Any?) {
+            parent.viewModel.navigateUp()
+        }
+
         @objc func contextOpen(_ sender: Any?) {
             guard let item = targetItemForContextMenu() else { return }
             parent.viewModel.openItem(item)
         }
 
+        @objc func contextOpenExternal(_ sender: Any?) {
+            guard let item = targetItemForContextMenu(), !item.isParentEntry else { return }
+            NSWorkspace.shared.open(item.url)
+        }
+
         @objc func contextShowInFinder(_ sender: Any?) {
-            guard let item = targetItemForContextMenu() else { return }
-            NSWorkspace.shared.activateFileViewerSelecting([item.url])
+            let items = targetItemsForContextMenu()
+            if !items.isEmpty {
+                NSWorkspace.shared.activateFileViewerSelecting(items.map { $0.url })
+            } else {
+                let folderURL = URL(fileURLWithPath: parent.viewModel.currentPath)
+                NSWorkspace.shared.activateFileViewerSelecting([folderURL])
+            }
+        }
+
+        @objc func contextAddToArchive(_ sender: Any?) {
+            parent.viewModel.appViewModel?.actionAdd()
+        }
+
+        @objc func contextQuickAdd7z(_ sender: Any?) {
+            let items = targetItemsForContextMenu()
+            parent.viewModel.appViewModel?.quickCompress(items: items, in: parent.viewModel.currentPath, format: .sevenZ)
+        }
+
+        @objc func contextQuickAddZip(_ sender: Any?) {
+            let items = targetItemsForContextMenu()
+            parent.viewModel.appViewModel?.quickCompress(items: items, in: parent.viewModel.currentPath, format: .zip)
+        }
+
+        @objc func contextExtractDialog(_ sender: Any?) {
+            parent.viewModel.appViewModel?.actionExtract()
+        }
+
+        @objc func contextExtractHere(_ sender: Any?) {
+            guard let item = targetItemsForContextMenu().first else { return }
+            parent.viewModel.appViewModel?.extractHere(archivePath: item.url.path, destinationDirectory: parent.viewModel.currentPath)
+        }
+
+        @objc func contextExtractToSubfolder(_ sender: Any?) {
+            guard let item = targetItemsForContextMenu().first else { return }
+            parent.viewModel.appViewModel?.extractToSubfolder(archivePath: item.url.path, parentDirectory: parent.viewModel.currentPath)
+        }
+
+        @objc func contextTestArchive(_ sender: Any?) {
+            parent.viewModel.appViewModel?.actionTest()
+        }
+
+        @objc func contextCopyTo(_ sender: Any?) {
+            parent.viewModel.appViewModel?.actionCopy()
+        }
+
+        @objc func contextMoveTo(_ sender: Any?) {
+            parent.viewModel.appViewModel?.actionMove()
+        }
+
+        @objc func contextDuplicate(_ sender: Any?) {
+            let items = targetItemsForContextMenu()
+            parent.viewModel.appViewModel?.actionDuplicate(items: items, in: parent.viewModel.currentPath.isEmpty ? parent.viewModel : parent.viewModel)
+        }
+
+        @objc func contextRename(_ sender: Any?) {
+            guard let item = targetItemsForContextMenu().first else { return }
+            parent.viewModel.appViewModel?.actionRename(item: item, in: parent.viewModel)
+        }
+
+        @objc func contextNewFolder(_ sender: Any?) {
+            parent.viewModel.appViewModel?.actionCreateFolder()
+        }
+
+        @objc func contextDelete(_ sender: Any?) {
+            parent.viewModel.appViewModel?.actionDelete()
+        }
+
+        @objc func contextCopyFilesToClipboard(_ sender: Any?) {
+            let items = targetItemsForContextMenu()
+            parent.viewModel.appViewModel?.copyFilesToPasteboard(items: items)
         }
 
         @objc func contextCopyPath(_ sender: Any?) {
-            guard let item = targetItemForContextMenu() else { return }
+            let items = targetItemsForContextMenu()
+            let paths = items.map { $0.archiveInternalPath ?? $0.url.path }.joined(separator: "\n")
+            guard !paths.isEmpty else { return }
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(item.url.path, forType: .string)
+            NSPasteboard.general.setString(paths, forType: .string)
+        }
+
+        @objc func contextCopyName(_ sender: Any?) {
+            let items = targetItemsForContextMenu()
+            let names = items.map { $0.name }.joined(separator: "\n")
+            guard !names.isEmpty else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(names, forType: .string)
+        }
+
+        @objc func contextSelectAll(_ sender: Any?) {
+            parent.viewModel.selectAll()
+        }
+
+        @objc func contextInvertSelection(_ sender: Any?) {
+            parent.viewModel.invertSelection()
+        }
+
+        @objc func contextRefresh(_ sender: Any?) {
+            parent.viewModel.refresh()
+        }
+
+        @objc func contextProperties(_ sender: Any?) {
+            parent.viewModel.appViewModel?.actionInfo()
         }
     }
 }

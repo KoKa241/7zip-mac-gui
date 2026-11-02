@@ -46,6 +46,29 @@ enum ToolbarIconStyle: String, CaseIterable, Identifiable {
     }
 }
 
+enum ActiveModalSheet: Identifiable {
+    case info(FileItem)
+    case settings
+    case addArchive(sourceDirectory: String, sourceItems: [FileItem])
+    case extractArchive(archivePath: String, internalPaths: [String]?, defaultDestination: String, initialPassword: String?)
+    case copyMove(operation: CopyMoveOperationType, sourceItems: [FileItem], sourceArchivePath: String?, sourceArchivePassword: String?, defaultDestination: String)
+
+    var id: String {
+        switch self {
+        case .info(let item):
+            return "info_\(item.id)"
+        case .settings:
+            return "settings"
+        case .addArchive(let dir, _):
+            return "add_\(dir)"
+        case .extractArchive(let path, _, _, _):
+            return "extract_\(path)"
+        case .copyMove(let op, _, _, _, _):
+            return "copymove_\(op.title)"
+        }
+    }
+}
+
 final class FileManagerAppViewModel: ObservableObject {
     @Published var isDualPane: Bool = false
     @Published var activePanelIndex: Int = 0
@@ -64,19 +87,40 @@ final class FileManagerAppViewModel: ObservableObject {
         }
     }
 
-    @Published var showSettingsSheet: Bool = false
+    // Unified Modal Sheet presentation (ensures reliable sheet presentation on macOS 11+)
+    @Published var activeModalSheet: ActiveModalSheet? = nil
+
+    var showSettingsSheet: Bool {
+        get {
+            if case .settings = activeModalSheet { return true }
+            return false
+        }
+        set {
+            if newValue {
+                activeModalSheet = .settings
+            } else if case .settings = activeModalSheet {
+                activeModalSheet = nil
+            }
+        }
+    }
+
+    var showInfoSheet: Bool {
+        get {
+            if case .info = activeModalSheet { return true }
+            return false
+        }
+        set {
+            if !newValue, case .info = activeModalSheet {
+                activeModalSheet = nil
+            }
+        }
+    }
 
     // Toolbar configuration (matching 7-Zip View -> Toolbars options)
     @Published var showArchiveToolbar: Bool = true
     @Published var showStandardToolbar: Bool = true
     @Published var largeButtons: Bool = true
     @Published var showButtonsText: Bool = true
-
-    // Dialog / Action notification banner or modal state
-    @Published var activeAlertTitle: String? = nil
-    @Published var activeAlertMessage: String? = nil
-    @Published var showInfoSheet: Bool = false
-    @Published var infoItem: FileItem? = nil
 
     let leftPanel: FilePanelViewModel
     let rightPanel: FilePanelViewModel
@@ -101,6 +145,8 @@ final class FileManagerAppViewModel: ObservableObject {
 
         self.leftPanel = FilePanelViewModel(panelIndex: 0, initialPath: initialLeft)
         self.rightPanel = FilePanelViewModel(panelIndex: 1, initialPath: initialRight)
+        self.leftPanel.appViewModel = self
+        self.rightPanel.appViewModel = self
 
         if let savedTheme = UserDefaults.standard.string(forKey: "7zip.appTheme"),
            let theme = AppTheme(rawValue: savedTheme) {
@@ -154,79 +200,262 @@ final class FileManagerAppViewModel: ObservableObject {
         }
     }
 
+    func refreshPanels() {
+        leftPanel.refresh()
+        if isDualPane {
+            rightPanel.refresh()
+        }
+    }
+
     // MARK: - Toolbar Actions
 
     func actionAdd() {
         let panel = activePanel
-        let selected = panel.items.filter { panel.selectedIDs.contains($0.id) }
-        let names = selected.isEmpty ? (panel.focusedItem.map { [$0.name] } ?? []) : selected.map { $0.name }
-        if names.isEmpty {
-            showMessage(title: "Add to Archive", message: "Please select one or more files or folders to add to an archive.")
-        } else {
-            showMessage(title: "Add to Archive", message: "Selected \(names.count) item(s) in:\n\(panel.currentPath)\n\n(Archive creation dialog will be connected to 7-Zip engine in the next step.)")
+        if panel.isInsideArchive {
+            showMessage(
+                title: "Add to Archive",
+                message: "Cannot create a new archive directly from inside an open archive. Please navigate to a folder on disk first."
+            )
+            return
         }
+
+        var itemsToAdd = panel.effectiveSelectedItems
+        if itemsToAdd.isEmpty {
+            // If no specific item is selected, add all items in the current folder
+            itemsToAdd = panel.items.filter { !$0.isParentEntry }
+        }
+
+        guard !itemsToAdd.isEmpty else {
+            showMessage(
+                title: "Add to Archive",
+                message: "The current folder is empty. Please navigate to a folder with files to add to an archive."
+            )
+            return
+        }
+
+        activeModalSheet = .addArchive(
+            sourceDirectory: panel.currentPath,
+            sourceItems: itemsToAdd
+        )
     }
 
     func actionExtract() {
         let panel = activePanel
-        let selected = panel.items.filter { panel.selectedIDs.contains($0.id) }
-        let targetItem = selected.first ?? panel.focusedItem
-        if let item = targetItem, !item.isParentEntry {
-            showMessage(title: "Extract Archive", message: "Extract '\(item.name)' to:\n\(targetPanel.currentPath)\n\n(Extraction engine will be connected in the next step.)")
-        } else {
-            showMessage(title: "Extract", message: "Please select an archive file to extract.")
+
+        if let openArchive = panel.currentArchivePath {
+            let selected = panel.effectiveSelectedItems
+            let internalPaths = selected.compactMap { $0.archiveInternalPath }
+            let defaultDest = isDualPane && !targetPanel.isInsideArchive
+                ? targetPanel.currentPath
+                : URL(fileURLWithPath: openArchive).deletingLastPathComponent().path
+
+            activeModalSheet = .extractArchive(
+                archivePath: openArchive,
+                internalPaths: internalPaths.isEmpty ? nil : internalPaths,
+                defaultDestination: defaultDest,
+                initialPassword: panel.archivePassword
+            )
+            return
         }
+
+        let selected = panel.effectiveSelectedItems
+        let archiveItem: FileItem?
+        if let firstSelected = selected.first, !firstSelected.isDirectory, SevenZipEngine.isArchiveFile(url: firstSelected.url) {
+            archiveItem = firstSelected
+        } else {
+            // Check if there is an archive in the current folder or let the user pick one via NSOpenPanel
+            let archivesInFolder = panel.items.filter { !$0.isParentEntry && !$0.isDirectory && SevenZipEngine.isArchiveFile(url: $0.url) }
+            if archivesInFolder.count == 1 {
+                archiveItem = archivesInFolder.first
+            } else {
+                archiveItem = nil
+            }
+        }
+
+        let archivePath: String
+        if let item = archiveItem {
+            archivePath = item.url.path
+        } else if let pickedURL = promptToPickArchiveFile(title: "Select Archive to Extract", initialDirectory: panel.currentPath) {
+            archivePath = pickedURL.path
+        } else {
+            return
+        }
+
+        let archiveBaseName = (URL(fileURLWithPath: archivePath).lastPathComponent as NSString).deletingPathExtension
+        let defaultDest: String
+        if isDualPane && !targetPanel.isInsideArchive {
+            defaultDest = targetPanel.currentPath
+        } else {
+            defaultDest = (panel.currentPath as NSString).appendingPathComponent(archiveBaseName)
+        }
+
+        activeModalSheet = .extractArchive(
+            archivePath: archivePath,
+            internalPaths: nil,
+            defaultDestination: defaultDest,
+            initialPassword: nil
+        )
     }
 
     func actionTest() {
         let panel = activePanel
-        let selected = panel.items.filter { panel.selectedIDs.contains($0.id) }
-        let targetItem = selected.first ?? panel.focusedItem
-        if let item = targetItem, !item.isParentEntry {
-            showMessage(title: "Test Archive", message: "Testing archive '\(item.name)'...\n\n(7-Zip integrity test will be connected in the next step.)")
+        let archiveToTest: String
+        let internalPaths: [String]?
+        let password: String?
+
+        if let openArchive = panel.currentArchivePath {
+            archiveToTest = openArchive
+            let selected = panel.effectiveSelectedItems.compactMap { $0.archiveInternalPath }
+            internalPaths = selected.isEmpty ? nil : selected
+            password = panel.archivePassword
+        } else if let item = panel.effectiveSelectedItems.first, !item.isDirectory, SevenZipEngine.isArchiveFile(url: item.url) {
+            archiveToTest = item.url.path
+            internalPaths = nil
+            password = nil
+        } else if let pickedURL = promptToPickArchiveFile(title: "Select Archive to Test", initialDirectory: panel.currentPath) {
+            archiveToTest = pickedURL.path
+            internalPaths = nil
+            password = nil
         } else {
-            showMessage(title: "Test", message: "Please select an archive or file to test.")
+            return
+        }
+
+        do {
+            let result = try SevenZipEngine.shared.testArchive(
+                archivePath: archiveToTest,
+                internalPaths: internalPaths,
+                password: password
+            )
+            let archiveName = URL(fileURLWithPath: archiveToTest).lastPathComponent
+            if result.isSuccess {
+                showMessage(
+                    title: "Test Archive — OK",
+                    message: "Archive '\(archiveName)' passed the integrity check.\n\nEverything is Ok."
+                )
+            } else {
+                showMessage(
+                    title: "Test Archive — Failed",
+                    message: "Errors detected in '\(archiveName)':\n\n\(result.output)"
+                )
+            }
+        } catch {
+            showMessage(title: "Test Archive — Error", message: error.localizedDescription)
         }
     }
 
     func actionCopy() {
         let src = activePanel
-        let selected = src.items.filter { src.selectedIDs.contains($0.id) }
-        let itemsToCopy = selected.isEmpty ? (src.focusedItem.map { [$0] } ?? []).filter { !$0.isParentEntry } : selected
+        let itemsToCopy = src.effectiveSelectedItems
         guard !itemsToCopy.isEmpty else {
-            showMessage(title: "Copy", message: "You must select one or more files or folders.")
+            showMessage(title: "Copy", message: "Please select one or more files or folders in the file list first.")
             return
         }
 
-        let destDir = isDualPane ? targetPanel.currentPath : src.currentPath
-        showMessage(
-            title: "Copy",
-            message: "Copy \(itemsToCopy.count) item(s) from:\n\(src.currentPath)\n\nTo:\n\(destDir)"
+        let destDir: String
+        if isDualPane && !targetPanel.isInsideArchive {
+            destDir = targetPanel.currentPath
+        } else {
+            destDir = src.currentPath
+        }
+
+        activeModalSheet = .copyMove(
+            operation: .copy,
+            sourceItems: itemsToCopy,
+            sourceArchivePath: src.currentArchivePath,
+            sourceArchivePassword: src.archivePassword,
+            defaultDestination: destDir
         )
     }
 
     func actionMove() {
         let src = activePanel
-        let selected = src.items.filter { src.selectedIDs.contains($0.id) }
-        let itemsToMove = selected.isEmpty ? (src.focusedItem.map { [$0] } ?? []).filter { !$0.isParentEntry } : selected
+        let itemsToMove = src.effectiveSelectedItems
         guard !itemsToMove.isEmpty else {
-            showMessage(title: "Move", message: "You must select one or more files or folders.")
+            showMessage(title: "Move", message: "Please select one or more files or folders in the file list first.")
             return
         }
 
-        let destDir = isDualPane ? targetPanel.currentPath : src.currentPath
-        showMessage(
-            title: "Move",
-            message: "Move \(itemsToMove.count) item(s) from:\n\(src.currentPath)\n\nTo:\n\(destDir)"
+        if let archivePath = src.currentArchivePath, !SevenZipEngine.isModifiableArchive(path: archivePath) {
+            showMessage(title: "Move", message: "Moving items out of this archive format is not supported. Use Copy or Extract instead.")
+            return
+        }
+
+        let destDir: String
+        if isDualPane && !targetPanel.isInsideArchive {
+            destDir = targetPanel.currentPath
+        } else {
+            destDir = src.currentPath
+        }
+
+        activeModalSheet = .copyMove(
+            operation: .move,
+            sourceItems: itemsToMove,
+            sourceArchivePath: src.currentArchivePath,
+            sourceArchivePassword: src.archivePassword,
+            defaultDestination: destDir
         )
+    }
+
+    func performFilesystemCopyMove(items: [FileItem], toDirectory destDir: String, isMove: Bool) throws {
+        let fm = FileManager.default
+        let destFolderURL = URL(fileURLWithPath: destDir, isDirectory: true).standardizedFileURL
+
+        for item in items {
+            let srcURL = item.url.standardizedFileURL
+            let dstURL = destFolderURL.appendingPathComponent(item.name).standardizedFileURL
+            if srcURL == dstURL {
+                continue
+            }
+            if fm.fileExists(atPath: dstURL.path) {
+                try fm.removeItem(at: dstURL)
+            }
+            if isMove {
+                try fm.moveItem(at: srcURL, to: dstURL)
+            } else {
+                try fm.copyItem(at: srcURL, to: dstURL)
+            }
+        }
     }
 
     func actionDelete() {
         let src = activePanel
-        let selected = src.items.filter { src.selectedIDs.contains($0.id) }
-        let itemsToDelete = selected.isEmpty ? (src.focusedItem.map { [$0] } ?? []).filter { !$0.isParentEntry } : selected
+        let itemsToDelete = src.effectiveSelectedItems
         guard !itemsToDelete.isEmpty else {
-            showMessage(title: "Delete", message: "You must select one or more files or folders to delete.")
+            showMessage(title: "Delete", message: "Please select one or more files or folders in the file list to delete.")
+            return
+        }
+
+        if let archivePath = src.currentArchivePath {
+            guard SevenZipEngine.isModifiableArchive(path: archivePath) else {
+                showMessage(title: "Delete", message: "This archive format is read-only and does not support deleting entries.")
+                return
+            }
+            let internalPaths = itemsToDelete.compactMap { $0.archiveInternalPath }
+            guard !internalPaths.isEmpty else { return }
+
+            let alert = NSAlert()
+            alert.messageText = "Confirm Delete from Archive"
+            if itemsToDelete.count == 1, let single = itemsToDelete.first {
+                alert.informativeText = "Are you sure you want to delete '\(single.name)' from the archive?"
+            } else {
+                alert.informativeText = "Are you sure you want to delete \(itemsToDelete.count) items from the archive?"
+            }
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Delete")
+            alert.addButton(withTitle: "Cancel")
+
+            if alert.runModal() == .alertFirstButtonReturn {
+                do {
+                    try SevenZipEngine.shared.deleteFromArchive(
+                        archivePath: archivePath,
+                        internalPaths: internalPaths,
+                        password: src.archivePassword
+                    )
+                    refreshPanels()
+                } catch {
+                    showMessage(title: "Error Deleting from Archive", message: error.localizedDescription)
+                }
+            }
             return
         }
 
@@ -250,10 +479,7 @@ final class FileManagerAppViewModel: ObservableObject {
                     errors.append("\(item.name): \(error.localizedDescription)")
                 }
             }
-            src.refresh()
-            if isDualPane {
-                targetPanel.refresh()
-            }
+            refreshPanels()
             if !errors.isEmpty {
                 showMessage(title: "Error Deleting", message: errors.joined(separator: "\n"))
             }
@@ -262,16 +488,37 @@ final class FileManagerAppViewModel: ObservableObject {
 
     func actionInfo() {
         let src = activePanel
-        let selected = src.items.filter { src.selectedIDs.contains($0.id) }
-        if let item = selected.first ?? src.focusedItem, !item.isParentEntry {
-            infoItem = item
-            showInfoSheet = true
+        if let item = src.effectiveSelectedItems.first {
+            activeModalSheet = .info(item)
+        } else if let archivePath = src.currentArchivePath, let listing = src.currentArchiveListing {
+            let url = URL(fileURLWithPath: archivePath)
+            let icon = NSWorkspace.shared.icon(forFile: archivePath)
+            let item = FileItem(
+                id: archivePath,
+                url: url,
+                name: url.lastPathComponent,
+                isDirectory: false,
+                isParentEntry: false,
+                size: listing.entries.reduce(0) { $0 + $1.size },
+                packedSize: listing.physicalSize,
+                modifiedDate: nil,
+                createdDate: nil,
+                accessedDate: nil,
+                posixPermissions: listing.isSolid ? "Solid (+)" : "Non-solid (-)",
+                fileType: "Archive (\(listing.archiveType))",
+                comment: "",
+                icon: icon,
+                archiveInternalPath: nil,
+                crc: "",
+                method: listing.method,
+                isEncrypted: false
+            )
+            activeModalSheet = .info(item)
         } else {
-            // Show current folder properties
             let url = URL(fileURLWithPath: src.currentPath)
             let icon = NSWorkspace.shared.icon(forFile: src.currentPath)
             let res = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .contentAccessDateKey])
-            infoItem = FileItem(
+            let item = FileItem(
                 id: src.currentPath,
                 url: url,
                 name: url.lastPathComponent.isEmpty ? "/" : url.lastPathComponent,
@@ -287,12 +534,17 @@ final class FileManagerAppViewModel: ObservableObject {
                 comment: "",
                 icon: icon
             )
-            showInfoSheet = true
+            activeModalSheet = .info(item)
         }
     }
 
     func actionCreateFolder() {
         let src = activePanel
+        if src.isInsideArchive {
+            showMessage(title: "Create Folder", message: "Creating empty folders directly inside an archive is not supported.")
+            return
+        }
+
         let alert = NSAlert()
         alert.messageText = "Create Folder"
         alert.informativeText = "Folder name:"
@@ -317,7 +569,185 @@ final class FileManagerAppViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Extended Context Menu Actions
+
+    func ArchiveBaseName(for items: [FileItem], in directory: String) -> String {
+        if items.count == 1, let single = items.first {
+            return single.isDirectory
+                ? single.name
+                : (single.name as NSString).deletingPathExtension
+        }
+        let folderName = URL(fileURLWithPath: directory).lastPathComponent
+        return folderName.isEmpty || folderName == "/" ? "archive" : folderName
+    }
+
+    func quickCompress(items: [FileItem], in directory: String, format: ArchiveFormat) {
+        guard !items.isEmpty else { return }
+        let baseName = ArchiveBaseName(for: items, in: directory)
+        let archivePath = (directory as NSString).appendingPathComponent("\(baseName).\(format.fileExtension)")
+        let relativeNames = items.map { $0.name }
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                try SevenZipEngine.shared.createArchive(
+                    archivePath: archivePath,
+                    format: format,
+                    level: .normal,
+                    solid: format == .sevenZ,
+                    sourcePaths: relativeNames,
+                    workingDirectory: directory
+                )
+                DispatchQueue.main.async {
+                    self?.refreshPanels()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self?.showMessage(title: "Compression Error", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func extractHere(archivePath: String, destinationDirectory: String, password: String? = nil) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                try SevenZipEngine.shared.extractArchive(
+                    archivePath: archivePath,
+                    destinationPath: destinationDirectory,
+                    internalPaths: nil,
+                    preserveDirectoryStructure: true,
+                    overwriteMode: .overwriteAll,
+                    password: password
+                )
+                DispatchQueue.main.async {
+                    self?.refreshPanels()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self?.showMessage(title: "Extraction Error", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func extractToSubfolder(archivePath: String, parentDirectory: String, password: String? = nil) {
+        let baseName = (URL(fileURLWithPath: archivePath).lastPathComponent as NSString).deletingPathExtension
+        let subDir = (parentDirectory as NSString).appendingPathComponent(baseName)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                try FileManager.default.createDirectory(
+                    at: URL(fileURLWithPath: subDir, isDirectory: true),
+                    withIntermediateDirectories: true
+                )
+                try SevenZipEngine.shared.extractArchive(
+                    archivePath: archivePath,
+                    destinationPath: subDir,
+                    internalPaths: nil,
+                    preserveDirectoryStructure: true,
+                    overwriteMode: .overwriteAll,
+                    password: password
+                )
+                DispatchQueue.main.async {
+                    self?.refreshPanels()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self?.showMessage(title: "Extraction Error", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func actionRename(item: FileItem, in panel: FilePanelViewModel) {
+        guard !panel.isInsideArchive, !item.isParentEntry else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Rename"
+        alert.informativeText = "Enter a new name for '\(item.name)':"
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        input.stringValue = item.name
+        alert.accessoryView = input
+        alert.window.initialFirstResponder = input
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            let newName = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !newName.isEmpty, newName != item.name else { return }
+            let dstURL = item.url.deletingLastPathComponent().appendingPathComponent(newName)
+            do {
+                try FileManager.default.moveItem(at: item.url, to: dstURL)
+                refreshPanels()
+            } catch {
+                showMessage(title: "Error Renaming", message: error.localizedDescription)
+            }
+        }
+    }
+
+    func actionDuplicate(items: [FileItem], in panel: FilePanelViewModel) {
+        guard !panel.isInsideArchive else { return }
+        let fm = FileManager.default
+        var errors: [String] = []
+
+        for item in items where !item.isParentEntry {
+            let dirURL = item.url.deletingLastPathComponent()
+            let ext = item.url.pathExtension
+            let stem = (item.name as NSString).deletingPathExtension
+
+            var candidateName = ext.isEmpty ? "\(stem) copy" : "\(stem) copy.\(ext)"
+            var counter = 2
+            while fm.fileExists(atPath: dirURL.appendingPathComponent(candidateName).path) {
+                candidateName = ext.isEmpty ? "\(stem) copy \(counter)" : "\(stem) copy \(counter).\(ext)"
+                counter += 1
+            }
+
+            do {
+                try fm.copyItem(at: item.url, to: dirURL.appendingPathComponent(candidateName))
+            } catch {
+                errors.append("\(item.name): \(error.localizedDescription)")
+            }
+        }
+
+        refreshPanels()
+        if !errors.isEmpty {
+            showMessage(title: "Error Duplicating", message: errors.joined(separator: "\n"))
+        }
+    }
+
+    func copyFilesToPasteboard(items: [FileItem]) {
+        let urls = items.filter { !$0.isParentEntry && $0.archiveInternalPath == nil }.map { $0.url as NSURL }
+        guard !urls.isEmpty else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects(urls)
+    }
+
+    private func promptToPickArchiveFile(title: String, initialDirectory: String) -> URL? {
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+                             CommandLine.arguments.contains("-ui-testing")
+        if isRunningTests {
+            return nil
+        }
+        let openPanel = NSOpenPanel()
+        openPanel.title = title
+        openPanel.message = "Select an archive file (.7z, .zip, .rar, .tar, .gz, .bz2, .xz, .dmg, .iso, etc.)"
+        openPanel.canChooseFiles = true
+        openPanel.canChooseDirectories = false
+        openPanel.allowsMultipleSelection = false
+        openPanel.directoryURL = URL(fileURLWithPath: initialDirectory)
+        if openPanel.runModal() == .OK {
+            return openPanel.url
+        }
+        return nil
+    }
+
     private func showMessage(title: String, message: String) {
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+                             CommandLine.arguments.contains("-ui-testing")
+        if isRunningTests {
+            return
+        }
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message

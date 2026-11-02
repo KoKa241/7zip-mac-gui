@@ -148,8 +148,9 @@ struct SevenZipToolbarView: View {
                         RoundedRectangle(cornerRadius: 6)
                             .fill(appViewModel.isDualPane ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.05))
                     )
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(ToolbarInteractiveButtonStyle())
                 .accessibilityIdentifier("ToolbarButton_PanelToggle")
                 .help("Switch between 1 and 2 panels (F9)")
 
@@ -165,8 +166,9 @@ struct SevenZipToolbarView: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .fill(Color.primary.opacity(0.05))
                         )
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(ToolbarInteractiveButtonStyle())
                 .accessibilityIdentifier("ToolbarButton_Settings")
                 .help("Options & Theme Settings (Cmd+,)")
                 .padding(.trailing, 4)
@@ -178,13 +180,39 @@ struct SevenZipToolbarView: View {
     }
 }
 
+struct ToolbarInteractiveButtonStyle: ButtonStyle {
+    @State private var isHovered: Bool = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(
+                        configuration.isPressed
+                            ? Color.primary.opacity(0.16)
+                            : (isHovered ? Color.primary.opacity(0.08) : Color.clear)
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(
+                        configuration.isPressed || isHovered ? Color.primary.opacity(0.15) : Color.clear,
+                        lineWidth: 1
+                    )
+            )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                isHovered = hovering
+            }
+    }
+}
+
 struct SevenZipToolbarButton: View {
     let descriptor: ToolbarButtonDescriptor
     let iconStyle: ToolbarIconStyle
     let largeButtons: Bool
     let showText: Bool
-
-    @State private var isHovered: Bool = false
 
     var body: some View {
         Button(action: descriptor.action) {
@@ -201,23 +229,12 @@ struct SevenZipToolbarButton: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
             .frame(minWidth: largeButtons ? 56 : 36)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(isHovered ? Color.primary.opacity(0.15) : Color.clear, lineWidth: 1)
-            )
             .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(ToolbarInteractiveButtonStyle())
         .accessibilityIdentifier("ToolbarButton_\(descriptor.id)")
         .accessibilityLabel(Text(descriptor.title))
         .help(descriptor.tooltip)
-        .onHover { hovering in
-            isHovered = hovering
-        }
     }
 
     @ViewBuilder

@@ -33,6 +33,10 @@ struct FileItem: Identifiable, Hashable {
     let fileType: String
     let comment: String
     let icon: NSImage
+    var archiveInternalPath: String? = nil
+    var crc: String = ""
+    var method: String = ""
+    var isEncrypted: Bool = false
 
     static func parentEntry(for parentURL: URL) -> FileItem {
         let folderIcon = NSWorkspace.shared.icon(forFileType: NSFileTypeForHFSTypeCode(OSType(kGenericFolderIcon)))

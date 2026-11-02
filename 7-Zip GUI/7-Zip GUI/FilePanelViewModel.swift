@@ -39,7 +39,18 @@ final class FilePanelViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
     @Published var pathHistory: [String] = []
 
+    // Archive browsing state
+    @Published var currentArchivePath: String? = nil
+    @Published var archiveInternalPrefix: String = "" // "" at archive root, or "folder/sub/"
+    @Published var archivePassword: String? = nil
+    private(set) var currentArchiveListing: ArchiveListing? = nil
+
+    var isInsideArchive: Bool {
+        currentArchivePath != nil
+    }
+
     var onActivatePanel: (() -> Void)?
+    weak var appViewModel: FileManagerAppViewModel?
 
     init(panelIndex: Int, initialPath: String? = nil) {
         self.panelIndex = panelIndex
@@ -71,6 +82,9 @@ final class FilePanelViewModel: ObservableObject {
     }
 
     var canGoUp: Bool {
+        if isInsideArchive {
+            return true
+        }
         return currentPath != "/" && !currentPath.isEmpty
     }
 
@@ -84,13 +98,24 @@ final class FilePanelViewModel: ObservableObject {
         let targetPath = standardizedURL.path
 
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: targetPath, isDirectory: &isDir), isDir.boolValue else {
-            errorMessage = "Folder not found: \(targetPath)"
-            if !currentPath.isEmpty {
-                pathInput = currentPath.hasSuffix("/") ? currentPath : currentPath + "/"
-            }
+        let exists = FileManager.default.fileExists(atPath: targetPath, isDirectory: &isDir)
+
+        if exists && !isDir.boolValue && SevenZipEngine.isArchiveFile(url: standardizedURL) {
+            openArchive(at: targetPath)
             return
         }
+
+        guard exists, isDir.boolValue else {
+            errorMessage = "Folder not found: \(targetPath)"
+            restorePathInput()
+            return
+        }
+
+        // Exit archive state if we were inside an archive
+        currentArchivePath = nil
+        archiveInternalPrefix = ""
+        currentArchiveListing = nil
+        archivePassword = nil
 
         errorMessage = nil
         currentPath = targetPath
@@ -105,8 +130,83 @@ final class FilePanelViewModel: ObservableObject {
         loadItems()
     }
 
+    @discardableResult
+    func openArchive(at archivePath: String, password: String? = nil) -> Bool {
+        let standardizedArchivePath = URL(fileURLWithPath: archivePath).standardizedFileURL.path
+        let effectivePassword = password ?? archivePassword
+        do {
+            let listing = try SevenZipEngine.shared.listArchive(at: standardizedArchivePath, password: effectivePassword)
+            let parentDir = URL(fileURLWithPath: standardizedArchivePath).deletingLastPathComponent().standardizedFileURL.path
+            currentPath = parentDir
+            currentArchivePath = standardizedArchivePath
+            archiveInternalPrefix = ""
+            archivePassword = effectivePassword
+            currentArchiveListing = listing
+            errorMessage = nil
+            updateArchivePathInput()
+            loadArchiveItems()
+            return true
+        } catch SevenZipError.passwordRequired {
+            if let prompted = promptForArchivePassword(archiveName: URL(fileURLWithPath: standardizedArchivePath).lastPathComponent) {
+                return openArchive(at: standardizedArchivePath, password: prompted)
+            }
+            errorMessage = SevenZipError.passwordRequired.localizedDescription
+            return false
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func navigateInsideArchive(prefix: String) {
+        guard isInsideArchive else { return }
+        let normalized = prefix.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        archiveInternalPrefix = normalized.isEmpty ? "" : normalized + "/"
+        updateArchivePathInput()
+        loadArchiveItems()
+    }
+
+    private func updateArchivePathInput() {
+        guard let archivePath = currentArchivePath else { return }
+        if archiveInternalPrefix.isEmpty {
+            pathInput = archivePath + "/"
+        } else {
+            pathInput = archivePath + "/" + archiveInternalPrefix
+        }
+    }
+
+    private func restorePathInput() {
+        if isInsideArchive {
+            updateArchivePathInput()
+        } else if !currentPath.isEmpty {
+            pathInput = currentPath.hasSuffix("/") ? currentPath : currentPath + "/"
+        }
+    }
+
     func navigateUp() {
         guard canGoUp else { return }
+
+        if let archivePath = currentArchivePath {
+            if !archiveInternalPrefix.isEmpty {
+                let trimmed = archiveInternalPrefix.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                if let lastSlash = trimmed.lastIndex(of: "/") {
+                    let parentPrefix = String(trimmed[..<lastSlash])
+                    navigateInsideArchive(prefix: parentPrefix)
+                } else {
+                    navigateInsideArchive(prefix: "")
+                }
+            } else {
+                // Exit archive back to filesystem directory
+                let archiveURL = URL(fileURLWithPath: archivePath)
+                let parentURL = archiveURL.deletingLastPathComponent()
+                navigateTo(url: parentURL)
+                if let archiveItem = items.first(where: { $0.url.standardizedFileURL == archiveURL.standardizedFileURL }) {
+                    updateSelection(ids: [archiveItem.id], focused: archiveItem)
+                }
+            }
+            return
+        }
+
         let currentURL = URL(fileURLWithPath: currentPath)
         let parentURL = currentURL.deletingLastPathComponent()
         navigateTo(url: parentURL)
@@ -117,18 +217,239 @@ final class FilePanelViewModel: ObservableObject {
     }
 
     func refresh() {
-        loadItems()
+        if let archivePath = currentArchivePath {
+            let savedPrefix = archiveInternalPrefix
+            if openArchive(at: archivePath, password: archivePassword) {
+                if !savedPrefix.isEmpty {
+                    navigateInsideArchive(prefix: savedPrefix)
+                }
+            }
+        } else {
+            loadItems()
+        }
     }
 
     func openItem(_ item: FileItem) {
         if item.isParentEntry {
             navigateUp()
-        } else if item.isDirectory {
+            return
+        }
+
+        if isInsideArchive {
+            if item.isDirectory {
+                let targetPrefix = item.archiveInternalPath ?? (archiveInternalPrefix + item.name)
+                navigateInsideArchive(prefix: targetPrefix)
+            } else if let archivePath = currentArchivePath, let internalPath = item.archiveInternalPath {
+                // Extract single file to a temporary preview directory and open with NSWorkspace
+                let previewDir = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("7ZipPreview_\(UUID().uuidString)", isDirectory: true)
+                do {
+                    try FileManager.default.createDirectory(at: previewDir, withIntermediateDirectories: true)
+                    try SevenZipEngine.shared.extractArchive(
+                        archivePath: archivePath,
+                        destinationPath: previewDir.path,
+                        internalPaths: [internalPath],
+                        preserveDirectoryStructure: false,
+                        overwriteMode: .overwriteAll,
+                        password: archivePassword
+                    )
+                    let extractedURL = previewDir.appendingPathComponent(item.name)
+                    if FileManager.default.fileExists(atPath: extractedURL.path) {
+                        NSWorkspace.shared.open(extractedURL)
+                    }
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            return
+        }
+
+        if item.isDirectory {
             navigateTo(url: item.url)
+        } else if SevenZipEngine.isArchiveFile(url: item.url) {
+            openArchive(at: item.url.path)
         } else {
             NSWorkspace.shared.open(item.url)
         }
     }
+
+    private func promptForArchivePassword(archiveName: String) -> String? {
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+                             CommandLine.arguments.contains("-ui-testing")
+        if isRunningTests {
+            return nil
+        }
+        let alert = NSAlert()
+        alert.messageText = "Enter Password"
+        alert.informativeText = "Archive '\(archiveName)' is encrypted. Enter password:"
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+
+        let input = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        alert.accessoryView = input
+        alert.window.initialFirstResponder = input
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            return input.stringValue
+        }
+        return nil
+    }
+
+    // MARK: - Loading Archive Items
+
+    private func loadArchiveItems() {
+        guard let archivePath = currentArchivePath,
+              let listing = currentArchiveListing else {
+            items = []
+            return
+        }
+
+        let archiveURL = URL(fileURLWithPath: archivePath)
+        let folderIcon = NSWorkspace.shared.icon(forFileType: NSFileTypeForHFSTypeCode(OSType(kGenericFolderIcon)))
+        folderIcon.size = NSSize(width: 16, height: 16)
+
+        var loadedItems: [FileItem] = []
+
+        if flatView {
+            for entry in listing.entries {
+                let entryName = (entry.path as NSString).lastPathComponent
+                if !showHiddenFiles && entryName.hasPrefix(".") {
+                    continue
+                }
+                let ext = (entryName as NSString).pathExtension
+                let icon: NSImage
+                if entry.isDirectory {
+                    icon = folderIcon
+                } else {
+                    icon = NSWorkspace.shared.icon(forFileType: ext.isEmpty ? "public.data" : ext)
+                    icon.size = NSSize(width: 16, height: 16)
+                }
+
+                let item = FileItem(
+                    id: "archive://\(archivePath)/\(entry.path)",
+                    url: archiveURL.appendingPathComponent(entry.path),
+                    name: entry.path,
+                    isDirectory: entry.isDirectory,
+                    isParentEntry: false,
+                    size: entry.size,
+                    packedSize: entry.packedSize,
+                    modifiedDate: entry.modifiedDate,
+                    createdDate: entry.createdDate,
+                    accessedDate: entry.accessedDate,
+                    posixPermissions: entry.attributes,
+                    fileType: entry.isDirectory ? "Folder" : (ext.isEmpty ? "File" : ext.uppercased()),
+                    comment: entry.comment,
+                    icon: icon,
+                    archiveInternalPath: entry.path,
+                    crc: entry.crc,
+                    method: entry.method,
+                    isEncrypted: entry.isEncrypted
+                )
+                loadedItems.append(item)
+            }
+        } else {
+            // Hierarchical view at `archiveInternalPrefix`
+            var directEntriesByName: [String: ArchiveEntry] = [:]
+            var synthesizedFolderNames: Set<String> = []
+
+            for entry in listing.entries {
+                guard entry.path.hasPrefix(archiveInternalPrefix) else { continue }
+                let remainder = String(entry.path.dropFirst(archiveInternalPrefix.count))
+                guard !remainder.isEmpty else { continue }
+
+                if let slashIdx = remainder.firstIndex(of: "/") {
+                    let childFolderName = String(remainder[..<slashIdx])
+                    if !childFolderName.isEmpty {
+                        synthesizedFolderNames.insert(childFolderName)
+                    }
+                } else {
+                    directEntriesByName[remainder] = entry
+                    if entry.isDirectory {
+                        synthesizedFolderNames.insert(remainder)
+                    }
+                }
+            }
+
+            // First add all folders at this level
+            for folderName in synthesizedFolderNames {
+                if !showHiddenFiles && folderName.hasPrefix(".") {
+                    continue
+                }
+                let fullInternalPath = archiveInternalPrefix + folderName
+                let explicitEntry = directEntriesByName[folderName]
+                let item = FileItem(
+                    id: "archive://\(archivePath)/\(fullInternalPath)",
+                    url: archiveURL.appendingPathComponent(fullInternalPath),
+                    name: folderName,
+                    isDirectory: true,
+                    isParentEntry: false,
+                    size: 0,
+                    packedSize: 0,
+                    modifiedDate: explicitEntry?.modifiedDate,
+                    createdDate: explicitEntry?.createdDate,
+                    accessedDate: explicitEntry?.accessedDate,
+                    posixPermissions: explicitEntry?.attributes ?? "D drwxr-xr-x",
+                    fileType: "Folder",
+                    comment: explicitEntry?.comment ?? "",
+                    icon: folderIcon,
+                    archiveInternalPath: fullInternalPath,
+                    crc: explicitEntry?.crc ?? "",
+                    method: explicitEntry?.method ?? "",
+                    isEncrypted: explicitEntry?.isEncrypted ?? false
+                )
+                loadedItems.append(item)
+            }
+
+            // Next add all direct files at this level
+            for (name, entry) in directEntriesByName where !entry.isDirectory && !synthesizedFolderNames.contains(name) {
+                if !showHiddenFiles && name.hasPrefix(".") {
+                    continue
+                }
+                let ext = (name as NSString).pathExtension
+                let icon = NSWorkspace.shared.icon(forFileType: ext.isEmpty ? "public.data" : ext)
+                icon.size = NSSize(width: 16, height: 16)
+
+                let item = FileItem(
+                    id: "archive://\(archivePath)/\(entry.path)",
+                    url: archiveURL.appendingPathComponent(entry.path),
+                    name: name,
+                    isDirectory: false,
+                    isParentEntry: false,
+                    size: entry.size,
+                    packedSize: entry.packedSize,
+                    modifiedDate: entry.modifiedDate,
+                    createdDate: entry.createdDate,
+                    accessedDate: entry.accessedDate,
+                    posixPermissions: entry.attributes,
+                    fileType: ext.isEmpty ? "File" : ext.uppercased(),
+                    comment: entry.comment,
+                    icon: icon,
+                    archiveInternalPath: entry.path,
+                    crc: entry.crc,
+                    method: entry.method,
+                    isEncrypted: entry.isEncrypted
+                )
+                loadedItems.append(item)
+            }
+        }
+
+        sortLoadedItems(&loadedItems)
+
+        if showDotsEntry {
+            let parentURL = archiveURL.deletingLastPathComponent()
+            loadedItems.insert(FileItem.parentEntry(for: parentURL), at: 0)
+        }
+
+        items = loadedItems
+
+        let validIDs = Set(loadedItems.map { $0.id })
+        selectedIDs = selectedIDs.intersection(validIDs)
+        if let focused = focusedItem, !validIDs.contains(focused.id) {
+            focusedItem = nil
+        }
+    }
+
+    // MARK: - Loading Filesystem Items
 
     func loadItems() {
         let fm = FileManager.default
@@ -325,7 +646,6 @@ final class FilePanelViewModel: ObservableObject {
     }
 
     func updateSelection(ids: Set<String>, focused: FileItem?) {
-        // Exclude ".." from operated selection count if needed, or keep it consistent with 7-Zip
         selectedIDs = ids.filter { $0 != ".." }
         focusedItem = focused
     }
@@ -352,6 +672,18 @@ final class FilePanelViewModel: ObservableObject {
         } else if let currentFocused = focusedItem, !selectedIDs.contains(currentFocused.id) {
             focusedItem = regularItems.first { selectedIDs.contains($0.id) }
         }
+    }
+
+    /// Returns currently selected items, or the focused item if selection is empty (excluding "..")
+    var effectiveSelectedItems: [FileItem] {
+        let selected = items.filter { selectedIDs.contains($0.id) && !$0.isParentEntry }
+        if !selected.isEmpty {
+            return selected
+        }
+        if let focused = focusedItem, !focused.isParentEntry {
+            return [focused]
+        }
+        return []
     }
 
     // MARK: - 7-Zip Status Bar Metrics

@@ -136,10 +136,6 @@ struct FilePanelView: View {
                 )
                 .allowsHitTesting(false)
         )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            viewModel.onActivatePanel?()
-        }
     }
 
     // MARK: - Header Bar
@@ -222,7 +218,8 @@ struct FilePanelView: View {
     }
 
     private var folderHeaderIcon: NSImage {
-        let icon = NSWorkspace.shared.icon(forFile: viewModel.currentPath)
+        let iconPath = viewModel.currentArchivePath ?? viewModel.currentPath
+        let icon = NSWorkspace.shared.icon(forFile: iconPath)
         icon.size = NSSize(width: 16, height: 16)
         return icon
     }

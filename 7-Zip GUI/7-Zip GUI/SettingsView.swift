@@ -10,15 +10,10 @@ struct SettingsView: View {
     @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 10) {
-                Image(systemName: "gearshape.2.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.accentColor)
-
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
                 Text("7-Zip Settings")
-                    .font(.headline)
-
+                    .font(.system(size: 16, weight: .semibold))
                 Spacer()
             }
 
@@ -27,12 +22,13 @@ struct SettingsView: View {
             // 1. Appearance / Theme Section
             VStack(alignment: .leading, spacing: 10) {
                 Text("Appearance")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.secondary)
 
-                HStack {
+                HStack(spacing: 12) {
                     Text("Theme:")
-                        .frame(width: 120, alignment: .leading)
+                        .font(.system(size: 13))
+                        .frame(width: 110, alignment: .leading)
 
                     Picker("", selection: $appViewModel.appTheme) {
                         ForEach(AppTheme.allCases) { theme in
@@ -41,11 +37,13 @@ struct SettingsView: View {
                     }
                     .pickerStyle(SegmentedPickerStyle())
                     .labelsHidden()
+                    .frame(maxWidth: .infinity)
                 }
 
-                HStack {
+                HStack(spacing: 12) {
                     Text("Toolbar Icons:")
-                        .frame(width: 120, alignment: .leading)
+                        .font(.system(size: 13))
+                        .frame(width: 110, alignment: .leading)
 
                     Picker("", selection: $appViewModel.toolbarIconStyle) {
                         ForEach(ToolbarIconStyle.allCases) { style in
@@ -54,6 +52,7 @@ struct SettingsView: View {
                     }
                     .pickerStyle(SegmentedPickerStyle())
                     .labelsHidden()
+                    .frame(maxWidth: .infinity)
                 }
             }
 
@@ -62,7 +61,7 @@ struct SettingsView: View {
             // 2. Toolbar & View Options
             VStack(alignment: .leading, spacing: 8) {
                 Text("Toolbar & Panels")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.secondary)
 
                 Toggle("Show Archive Toolbar (Add, Extract, Test)", isOn: $appViewModel.showArchiveToolbar)
@@ -83,6 +82,8 @@ struct SettingsView: View {
 
             Spacer()
 
+            Divider()
+
             HStack {
                 Spacer()
                 Button("Done") {
@@ -92,7 +93,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 440, height: 360)
+        .frame(width: 450, height: 360)
         .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
     }
 }
