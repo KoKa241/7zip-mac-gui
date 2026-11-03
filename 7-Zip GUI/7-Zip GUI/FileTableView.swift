@@ -50,6 +50,14 @@ struct FileTableView: NSViewRepresentable {
         }
         tableView.menu = context.coordinator.makeContextMenu()
 
+        // Drag & Drop: accept file URLs and file promises (Finder, other apps, other panel)
+        var draggedTypes: [NSPasteboard.PasteboardType] = [.fileURL]
+        draggedTypes.append(contentsOf: NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) })
+        tableView.registerForDraggedTypes(draggedTypes)
+        tableView.draggingDestinationFeedbackStyle = .regular
+        tableView.verticalMotionCanBeginDrag = true
+        updateDragSourceMask(for: tableView)
+
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
         return scrollView
@@ -58,6 +66,7 @@ struct FileTableView: NSViewRepresentable {
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.parent = self
         guard let tableView = context.coordinator.tableView else { return }
+        updateDragSourceMask(for: tableView)
 
         if context.coordinator.lastItems != viewModel.items ||
            context.coordinator.lastSortColumn != viewModel.sortColumn ||
@@ -76,6 +85,13 @@ struct FileTableView: NSViewRepresentable {
             syncSelectionToTable(tableView, coordinator: context.coordinator)
             context.coordinator.isProgrammaticUpdate = false
         }
+    }
+
+    /// Items inside an archive can only be copied out (extracted); disk items can be copied or moved.
+    private func updateDragSourceMask(for tableView: NSTableView) {
+        let mask: NSDragOperation = viewModel.isInsideArchive ? .copy : [.copy, .move, .generic]
+        tableView.setDraggingSourceOperationMask(mask, forLocal: true)
+        tableView.setDraggingSourceOperationMask(mask, forLocal: false)
     }
 
     private func syncSelectionToTable(_ tableView: NSTableView, coordinator: Coordinator) {
@@ -254,6 +270,106 @@ struct FileTableView: NSViewRepresentable {
             guard row >= 0 && row < parent.viewModel.items.count else { return }
             let item = parent.viewModel.items[row]
             parent.viewModel.openItem(item)
+        }
+
+        // MARK: Drag Source
+
+        func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+            let vm = parent.viewModel
+            guard row >= 0 && row < vm.items.count else { return nil }
+            let item = vm.items[row]
+            guard !item.isParentEntry else { return nil }
+
+            if let archivePath = vm.currentArchivePath {
+                // Items inside an archive are extracted on demand when dropped
+                return ArchiveEntryPromiseDelegate.makeProvider(for: item, archivePath: archivePath, password: vm.archivePassword)
+            }
+            return item.url as NSURL
+        }
+
+        func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+            parent.viewModel.onActivatePanel?()
+        }
+
+        func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+            // Finder / other apps may have moved our files away — refresh once they finish
+            guard operation.contains(.move) || operation.contains(.generic) else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.parent.viewModel.appViewModel?.refreshPanels()
+            }
+        }
+
+        // MARK: Drop Target
+
+        /// Resolves the destination folder for a drop and retargets the table highlight accordingly.
+        private func dropDestination(
+            in tableView: NSTableView,
+            row: Int,
+            dropOperation: NSTableView.DropOperation,
+            draggedURLs: [URL],
+            retarget: Bool
+        ) -> URL? {
+            let vm = parent.viewModel
+            guard !vm.isInsideArchive, !vm.currentPath.isEmpty else { return nil }
+
+            if dropOperation == .on, row >= 0, row < vm.items.count {
+                let item = vm.items[row]
+                let itemURL = item.url.standardizedFileURL
+                if item.isDirectory && !draggedURLs.contains(itemURL) {
+                    return itemURL
+                }
+            }
+
+            if retarget {
+                tableView.setDropRow(-1, dropOperation: .on)
+            }
+            return URL(fileURLWithPath: vm.currentPath, isDirectory: true).standardizedFileURL
+        }
+
+        func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+            let pasteboard = info.draggingPasteboard
+            let urls = FileDropPlanner.fileURLs(from: pasteboard)
+
+            guard let destination = dropDestination(in: tableView, row: row, dropOperation: dropOperation, draggedURLs: urls, retarget: true) else {
+                return []
+            }
+
+            if !urls.isEmpty {
+                return FileDropPlanner.operation(for: urls, destination: destination, sourceMask: info.draggingSourceOperationMask)
+            }
+            if !FileDropPlanner.promiseReceivers(from: pasteboard).isEmpty {
+                return .copy
+            }
+            return []
+        }
+
+        func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+            let pasteboard = info.draggingPasteboard
+            let urls = FileDropPlanner.fileURLs(from: pasteboard)
+
+            guard let appVM = parent.viewModel.appViewModel,
+                  let destination = dropDestination(in: tableView, row: row, dropOperation: dropOperation, draggedURLs: urls, retarget: false) else {
+                return false
+            }
+
+            parent.viewModel.onActivatePanel?()
+
+            if !urls.isEmpty {
+                let operation = FileDropPlanner.operation(for: urls, destination: destination, sourceMask: info.draggingSourceOperationMask)
+                guard !operation.isEmpty else { return false }
+                // Defer so the drag session finishes before any conflict alert is shown
+                DispatchQueue.main.async {
+                    appVM.handleDroppedFileURLs(urls, toDirectory: destination.path, isMove: operation == .move)
+                }
+                return true
+            }
+
+            let receivers = FileDropPlanner.promiseReceivers(from: pasteboard)
+            if !receivers.isEmpty {
+                appVM.handleDroppedFilePromises(receivers, toDirectory: destination.path)
+                return true
+            }
+            return false
         }
 
         func makeContextMenu() -> NSMenu {

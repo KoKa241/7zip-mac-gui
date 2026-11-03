@@ -840,7 +840,7 @@ final class FileManagerAppViewModel: ObservableObject {
         return nil
     }
 
-    private func showMessage(title: String, message: String) {
+    func showMessage(title: String, message: String) {
         let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
                              CommandLine.arguments.contains("-ui-testing")
         if isRunningTests {

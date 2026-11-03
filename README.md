@@ -9,12 +9,12 @@
 
 ---
 
-<!-- Place main screenshot here -->
+<!-- Project Banner -->
 <p align="center">
-  <img src="docs/screenshots/main-window.png" alt="7-Zip GUI Main Window" width="850">
+  <img src="docs/screenshots/og-banner.png" alt="7-Zip GUI Banner" width="850">
 </p>
 
----
+
 
 ## ✨ Features
 
@@ -24,23 +24,14 @@
 - **Archive Extraction & Testing**: Extract full archives or selected items with overwrite controls, and verify integrity with **Test Archive**.
 - **Customizable Hotkeys**: Built-in keyboard shortcuts recorder for archive operations, panel toggling, and file management.
 - **Native Look & Feel**: Supports System, Light, and Dark appearance, with both Modern macOS and Classic 7-Zip toolbar icon styles.
-- **Security Hardened**:
-  - Direct `Process` array argument dispatch (zero shell injection vectors).
-  - Path traversal (Zip Slip) protection.
-  - Automatic `com.apple.quarantine` attribute propagation to extracted files.
-  - Safe handling of case-insensitive APFS file collisions and long UTF-8 paths.
 
 ---
 
-## 📸 Screenshots
+## 📸 Screenshot
 
-| Dual-Pane File Manager | Archive Creation |
-| :---: | :---: |
-| ![Dual-Pane View](docs/screenshots/dual-pane.png) | ![Create Archive Dialog](docs/screenshots/add-archive.png) |
-
-| Customizable Hotkeys | Extract & Test |
-| :---: | :---: |
-| ![Hotkeys Settings](docs/screenshots/settings-hotkeys.png) | ![Extract Dialog](docs/screenshots/extract-archive.png) |
+<p align="center">
+  <img src="docs/screenshots/screenshot.png" alt="7-Zip GUI Screenshot" width="850">
+</p>
 
 ---
 

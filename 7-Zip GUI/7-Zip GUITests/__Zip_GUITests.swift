@@ -776,4 +776,98 @@ final class __Zip_GUITests: XCTestCase {
         XCTAssertFalse(vm.isInsideArchive)
         XCTAssertNil(vm.errorMessage)
     }
+
+    // MARK: - Drag & Drop
+
+    func testDropPlannerOperationSemantics() throws {
+        let fm = FileManager.default
+        let srcDir = tempDirectoryURL.appendingPathComponent("dnd_src", isDirectory: true)
+        let dstDir = tempDirectoryURL.appendingPathComponent("dnd_dst", isDirectory: true)
+        let folder = srcDir.appendingPathComponent("Folder", isDirectory: true)
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        try fm.createDirectory(at: dstDir, withIntermediateDirectories: true)
+        let file = srcDir.appendingPathComponent("a.txt")
+        try Data("a".utf8).write(to: file)
+
+        let fullMask: NSDragOperation = [.copy, .move, .generic]
+
+        // Same volume, no modifiers → move
+        XCTAssertEqual(FileDropPlanner.operation(for: [file], destination: dstDir, sourceMask: fullMask), .move)
+        // ⌥ held → copy, ⌘ held → move
+        XCTAssertEqual(FileDropPlanner.operation(for: [file], destination: dstDir, sourceMask: .copy), .copy)
+        XCTAssertEqual(FileDropPlanner.operation(for: [file], destination: dstDir, sourceMask: .generic), .move)
+        // Dropping into the folder the item already lives in → no-op
+        XCTAssertEqual(FileDropPlanner.operation(for: [file], destination: srcDir, sourceMask: fullMask), [])
+        // Dropping a folder into itself or its descendant → rejected
+        XCTAssertEqual(FileDropPlanner.operation(for: [folder], destination: folder, sourceMask: fullMask), [])
+        XCTAssertEqual(FileDropPlanner.operation(for: [srcDir], destination: folder, sourceMask: fullMask), [])
+    }
+
+    func testDropTransferConflictResolution() throws {
+        let fm = FileManager.default
+        let srcDir = tempDirectoryURL.appendingPathComponent("xfer_src", isDirectory: true)
+        let dstDir = tempDirectoryURL.appendingPathComponent("xfer_dst", isDirectory: true)
+        try fm.createDirectory(at: srcDir, withIntermediateDirectories: true)
+        try fm.createDirectory(at: dstDir, withIntermediateDirectories: true)
+
+        let src = srcDir.appendingPathComponent("doc.txt")
+        try Data("new".utf8).write(to: src)
+        try Data("old".utf8).write(to: dstDir.appendingPathComponent("doc.txt"))
+
+        // Skip keeps the existing file untouched
+        XCTAssertTrue(FileDropPlanner.transfer([src], to: dstDir, isMove: false, resolution: .skip).isEmpty)
+        XCTAssertEqual(try String(contentsOf: dstDir.appendingPathComponent("doc.txt"), encoding: .utf8), "old")
+
+        // Keep Both creates "doc 2.txt"
+        XCTAssertTrue(FileDropPlanner.transfer([src], to: dstDir, isMove: false, resolution: .keepBoth).isEmpty)
+        XCTAssertEqual(try String(contentsOf: dstDir.appendingPathComponent("doc 2.txt"), encoding: .utf8), "new")
+        XCTAssertTrue(fm.fileExists(atPath: src.path))
+
+        // Move + Replace overwrites destination and removes source
+        XCTAssertTrue(FileDropPlanner.transfer([src], to: dstDir, isMove: true, resolution: .replace).isEmpty)
+        XCTAssertEqual(try String(contentsOf: dstDir.appendingPathComponent("doc.txt"), encoding: .utf8), "new")
+        XCTAssertFalse(fm.fileExists(atPath: src.path))
+    }
+
+    func testDragOutOfArchiveExtractsEntryViaPromise() throws {
+        let fm = FileManager.default
+        let srcDir = tempDirectoryURL.appendingPathComponent("promise_src", isDirectory: true)
+        let nested = srcDir.appendingPathComponent("Docs/Sub", isDirectory: true)
+        try fm.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data("deep".utf8).write(to: nested.appendingPathComponent("deep.txt"))
+
+        let archiveURL = tempDirectoryURL.appendingPathComponent("promise.7z")
+        try SevenZipEngine.shared.createArchive(
+            archivePath: archiveURL.path,
+            format: .sevenZ,
+            level: .fast,
+            sourcePaths: ["Docs"],
+            workingDirectory: srcDir.path
+        )
+
+        let vm = FilePanelViewModel(panelIndex: 0, initialPath: tempDirectoryURL.path)
+        XCTAssertTrue(vm.openArchive(at: archiveURL.path))
+        let docsItem = try XCTUnwrap(vm.items.first { $0.name == "Docs" && $0.isDirectory })
+        vm.openItem(docsItem)
+        let subItem = try XCTUnwrap(vm.items.first { $0.name == "Sub" && $0.isDirectory })
+
+        // The panel provides a file promise for archive entries
+        let provider = try XCTUnwrap(ArchiveEntryPromiseDelegate.makeProvider(
+            for: subItem,
+            archivePath: archiveURL.path,
+            password: nil
+        ))
+        let payload = try XCTUnwrap(provider.userInfo as? ArchiveDragPayload)
+        XCTAssertEqual(payload.fileName, "Sub")
+
+        // Fulfilling the promise extracts the folder (recursively) without its parent hierarchy
+        let dropDir = tempDirectoryURL.appendingPathComponent("promise_drop", isDirectory: true)
+        try fm.createDirectory(at: dropDir, withIntermediateDirectories: true)
+        try ArchiveEntryPromiseDelegate.extract(payload, to: dropDir.appendingPathComponent("Sub"))
+        XCTAssertEqual(try String(contentsOf: dropDir.appendingPathComponent("Sub/deep.txt"), encoding: .utf8), "deep")
+
+        // A second drop to the same place never overwrites: it creates "Sub 2"
+        try ArchiveEntryPromiseDelegate.extract(payload, to: dropDir.appendingPathComponent("Sub"))
+        XCTAssertTrue(fm.fileExists(atPath: dropDir.appendingPathComponent("Sub 2/deep.txt").path))
+    }
 }
