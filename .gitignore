@@ -7,6 +7,10 @@
 *.tar.gz
 
 
+# Design assets / raw logos
+logo.*
+*.raw-icon.*
+
 # Xcode
 xcuserdata/
 *.xcscmblueprint
