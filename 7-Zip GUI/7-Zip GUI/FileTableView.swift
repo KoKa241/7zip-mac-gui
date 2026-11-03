@@ -313,7 +313,7 @@ struct FileTableView: NSViewRepresentable {
 
             if !vm.isInsideArchive {
                 let revealTitle = targetItems.isEmpty ? "Show Folder in Finder" : "Show in Finder"
-                menu.addItem(makeMenuItem(revealTitle, action: #selector(contextShowInFinder(_:)), symbol: "finder"))
+                menu.addItem(makeMenuItem(revealTitle, action: #selector(contextShowInFinder(_:)), symbol: "arrow.up.forward.square"))
             }
 
             menu.addItem(.separator())
@@ -391,7 +391,8 @@ struct FileTableView: NSViewRepresentable {
         private func makeMenuItem(_ title: String, action: Selector, symbol: String) -> NSMenuItem {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
-            if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: title) {
+            if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+                ?? NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: title) {
                 img.isTemplate = true
                 item.image = img
             }

@@ -23,6 +23,7 @@ struct AddArchiveSheet: View {
     @State private var encryptHeaders: Bool = false
     @State private var isRunning: Bool = false
     @State private var errorMessage: String? = nil
+    @State private var operationToken: SevenZipOperationToken? = nil
 
     init(
         appViewModel: FileManagerAppViewModel,
@@ -39,7 +40,7 @@ struct AddArchiveSheet: View {
         if sourceItems.count == 1, let single = sourceItems.first {
             baseName = single.isDirectory
                 ? single.name
-                : (single.name as NSString).deletingPathExtension
+                : SevenZipEngine.stripArchiveExtensions(from: single.name)
         } else {
             let folderName = URL(fileURLWithPath: sourceDirectory).lastPathComponent
             baseName = folderName.isEmpty || folderName == "/" ? "archive" : folderName
@@ -173,10 +174,13 @@ struct AddArchiveSheet: View {
                 }
                 Spacer()
                 Button("Cancel") {
-                    isPresented = false
+                    if isRunning {
+                        operationToken?.cancel()
+                    } else {
+                        isPresented = false
+                    }
                 }
                 .keyboardShortcut(.cancelAction)
-                .disabled(isRunning)
 
                 Button("OK") {
                     startCompression()
@@ -209,6 +213,8 @@ struct AddArchiveSheet: View {
     private func startCompression() {
         errorMessage = nil
         isRunning = true
+        let token = SevenZipOperationToken()
+        operationToken = token
 
         let targetArchive = (archivePath as NSString).expandingTildeInPath
         let fmt = format
@@ -229,16 +235,26 @@ struct AddArchiveSheet: View {
                     password: pwd,
                     encryptHeaders: encHeaders,
                     sourcePaths: relativeNames,
-                    workingDirectory: workDir
+                    workingDirectory: workDir,
+                    token: token
                 )
                 DispatchQueue.main.async {
                     isRunning = false
+                    operationToken = nil
+                    isPresented = false
+                    appViewModel.refreshPanels()
+                }
+            } catch SevenZipError.cancelled {
+                DispatchQueue.main.async {
+                    isRunning = false
+                    operationToken = nil
                     isPresented = false
                     appViewModel.refreshPanels()
                 }
             } catch {
                 DispatchQueue.main.async {
                     isRunning = false
+                    operationToken = nil
                     errorMessage = error.localizedDescription
                 }
             }
@@ -262,6 +278,7 @@ struct ExtractArchiveSheet: View {
     @State private var showPassword: Bool = false
     @State private var isRunning: Bool = false
     @State private var errorMessage: String? = nil
+    @State private var operationToken: SevenZipOperationToken? = nil
 
     init(
         appViewModel: FileManagerAppViewModel,
@@ -366,10 +383,13 @@ struct ExtractArchiveSheet: View {
                 }
                 Spacer()
                 Button("Cancel") {
-                    isPresented = false
+                    if isRunning {
+                        operationToken?.cancel()
+                    } else {
+                        isPresented = false
+                    }
                 }
                 .keyboardShortcut(.cancelAction)
-                .disabled(isRunning)
 
                 Button("OK") {
                     startExtraction()
@@ -405,6 +425,8 @@ struct ExtractArchiveSheet: View {
     private func startExtraction() {
         errorMessage = nil
         isRunning = true
+        let token = SevenZipOperationToken()
+        operationToken = token
 
         let dest = (destinationPath as NSString).expandingTildeInPath
         let arch = archivePath
@@ -425,16 +447,26 @@ struct ExtractArchiveSheet: View {
                     internalPaths: paths,
                     preserveDirectoryStructure: preserve,
                     overwriteMode: overwrite,
-                    password: pwd
+                    password: pwd,
+                    token: token
                 )
                 DispatchQueue.main.async {
                     isRunning = false
+                    operationToken = nil
+                    isPresented = false
+                    appViewModel.refreshPanels()
+                }
+            } catch SevenZipError.cancelled {
+                DispatchQueue.main.async {
+                    isRunning = false
+                    operationToken = nil
                     isPresented = false
                     appViewModel.refreshPanels()
                 }
             } catch {
                 DispatchQueue.main.async {
                     isRunning = false
+                    operationToken = nil
                     errorMessage = error.localizedDescription
                 }
             }

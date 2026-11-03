@@ -52,6 +52,27 @@ final class FilePanelViewModel: ObservableObject {
     var onActivatePanel: (() -> Void)?
     weak var appViewModel: FileManagerAppViewModel?
 
+    private static let previewDirsLock = NSLock()
+    private static var createdPreviewDirectories: [URL] = []
+
+    static func registerPreviewDirectory(_ url: URL) {
+        previewDirsLock.lock()
+        createdPreviewDirectories.append(url)
+        previewDirsLock.unlock()
+    }
+
+    static func cleanupPreviewDirectories() {
+        previewDirsLock.lock()
+        let dirs = createdPreviewDirectories
+        createdPreviewDirectories.removeAll()
+        previewDirsLock.unlock()
+
+        let fm = FileManager.default
+        for dir in dirs {
+            try? fm.removeItem(at: dir)
+        }
+    }
+
     init(panelIndex: Int, initialPath: String? = nil) {
         self.panelIndex = panelIndex
         let defaultPath = initialPath ?? FileManager.default.homeDirectoryForCurrentUser.path
@@ -68,17 +89,13 @@ final class FilePanelViewModel: ObservableObject {
             return
         }
         let home = fm.homeDirectoryForCurrentUser.path
-        var defaults: [String] = [
+        // Avoid probing TCC-protected folders (Desktop, Documents, Downloads) with fileExists on startup
+        pathHistory = [
             home,
-            (home as NSString).appendingPathComponent("Desktop"),
-            (home as NSString).appendingPathComponent("Downloads"),
-            (home as NSString).appendingPathComponent("Documents"),
             "/Applications",
             "/Volumes",
             "/"
         ]
-        defaults = defaults.filter { fm.fileExists(atPath: $0) }
-        pathHistory = defaults
     }
 
     var canGoUp: Bool {
@@ -240,11 +257,19 @@ final class FilePanelViewModel: ObservableObject {
                 let targetPrefix = item.archiveInternalPath ?? (archiveInternalPrefix + item.name)
                 navigateInsideArchive(prefix: targetPrefix)
             } else if let archivePath = currentArchivePath, let internalPath = item.archiveInternalPath {
+                guard SevenZipEngine.isSafeArchiveEntryPath(internalPath) else {
+                    errorMessage = SevenZipError.unsafeArchivePath(internalPath).localizedDescription
+                    return
+                }
+                let safeFileName = (item.name as NSString).lastPathComponent
+                guard !safeFileName.isEmpty, safeFileName != "..", safeFileName != "." else { return }
+
                 // Extract single file to a temporary preview directory and open with NSWorkspace
                 let previewDir = FileManager.default.temporaryDirectory
                     .appendingPathComponent("7ZipPreview_\(UUID().uuidString)", isDirectory: true)
                 do {
                     try FileManager.default.createDirectory(at: previewDir, withIntermediateDirectories: true)
+                    Self.registerPreviewDirectory(previewDir)
                     try SevenZipEngine.shared.extractArchive(
                         archivePath: archivePath,
                         destinationPath: previewDir.path,
@@ -253,8 +278,15 @@ final class FilePanelViewModel: ObservableObject {
                         overwriteMode: .overwriteAll,
                         password: archivePassword
                     )
-                    let extractedURL = previewDir.appendingPathComponent(item.name)
-                    if FileManager.default.fileExists(atPath: extractedURL.path) {
+                    let extractedURL = previewDir.appendingPathComponent(safeFileName)
+                    let resolvedPreviewPrefix = previewDir.resolvingSymlinksInPath().path + "/"
+                    let resolvedExtractedPath = extractedURL.resolvingSymlinksInPath().path
+                    guard resolvedExtractedPath.hasPrefix(resolvedPreviewPrefix),
+                          FileManager.default.fileExists(atPath: resolvedExtractedPath) else {
+                        errorMessage = "Extracted file failed path safety verification."
+                        return
+                    }
+                    if shouldAllowOpeningExtractedFile(at: extractedURL) {
                         NSWorkspace.shared.open(extractedURL)
                     }
                 } catch {
@@ -271,6 +303,31 @@ final class FilePanelViewModel: ObservableObject {
         } else {
             NSWorkspace.shared.open(item.url)
         }
+    }
+
+    private static let executablePreviewExtensions: Set<String> = [
+        "app", "command", "tool", "sh", "zsh", "bash", "csh", "pkg", "mpkg", "terminal", "workflow"
+    ]
+
+    private func shouldAllowOpeningExtractedFile(at url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        let isExec = Self.executablePreviewExtensions.contains(ext) ||
+                     FileManager.default.isExecutableFile(atPath: url.path)
+        guard isExec else { return true }
+
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+                             CommandLine.arguments.contains("-ui-testing")
+        if isRunningTests {
+            return false
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Executable File Inside Archive"
+        alert.informativeText = "'\(url.lastPathComponent)' may be an executable application or script. Are you sure you want to open it?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func promptForArchivePassword(archiveName: String) -> String? {

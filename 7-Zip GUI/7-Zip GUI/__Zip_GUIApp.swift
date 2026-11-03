@@ -12,7 +12,7 @@ struct __Zip_GUIApp: App {
     @StateObject private var appViewModel = FileManagerAppViewModel()
 
     var body: some Scene {
-        WindowGroup("7-Zip") {
+        WindowGroup("7-Zip GUI (Unofficial)") {
             ContentView(appViewModel: appViewModel)
         }
         .commands {
@@ -25,6 +25,13 @@ struct SevenZipMenuCommands: Commands {
     @ObservedObject var appViewModel: FileManagerAppViewModel
 
     var body: some Commands {
+        // App About Menu ("About 7-Zip GUI (Unofficial)")
+        CommandGroup(replacing: .appInfo) {
+            Button("About 7-Zip GUI (Unofficial)") {
+                appViewModel.showAboutSheet = true
+            }
+        }
+
         // App Preferences Menu (Cmd+,)
         CommandGroup(replacing: .appSettings) {
             Button("Settings...") {

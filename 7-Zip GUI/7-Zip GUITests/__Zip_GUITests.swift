@@ -547,4 +547,233 @@ final class __Zip_GUITests: XCTestCase {
         let dupURL = tempDirectoryURL.appendingPathComponent("doc copy.txt")
         XCTAssertTrue(FileManager.default.fileExists(atPath: dupURL.path))
     }
+
+    // MARK: - 7. Security, Edge Cases & Stability Tests
+
+    func testSwitchAndListfileInjectionProtection() throws {
+        let srcDir = tempDirectoryURL.appendingPathComponent("inj_src", isDirectory: true)
+        try FileManager.default.createDirectory(at: srcDir, withIntermediateDirectories: true)
+
+        // Create files with dangerous names (@listfile, -sdel switch, shell metacharacters, trailing space, emoji)
+        let listTrap = srcDir.appendingPathComponent("@list_trap.txt")
+        let switchTrap = srcDir.appendingPathComponent("-sdel")
+        let shellTrap = srcDir.appendingPathComponent("semi; `id` $(uname) 🔥.txt ")
+
+        try Data("/nonexistent/should/not/be/read_as_listfile\n".utf8).write(to: listTrap)
+        try Data("dash switch content".utf8).write(to: switchTrap)
+        try Data("shell meta content".utf8).write(to: shellTrap)
+
+        let archiveURL = tempDirectoryURL.appendingPathComponent("-strange_archive_name.7z")
+
+        try SevenZipEngine.shared.createArchive(
+            archivePath: archiveURL.path,
+            format: .sevenZ,
+            level: .fast,
+            sourcePaths: ["@list_trap.txt", "-sdel", "semi; `id` $(uname) 🔥.txt "],
+            workingDirectory: srcDir.path
+        )
+
+        // Verify source files were NOT deleted by "-sdel" filename
+        XCTAssertTrue(FileManager.default.fileExists(atPath: switchTrap.path))
+
+        let listing = try SevenZipEngine.shared.listArchive(at: archiveURL.path)
+        let entryPaths = Set(listing.entries.map { $0.path })
+        XCTAssertTrue(entryPaths.contains("@list_trap.txt"))
+        XCTAssertTrue(entryPaths.contains("-sdel"))
+        XCTAssertTrue(entryPaths.contains("semi; `id` $(uname) 🔥.txt "))
+
+        let outDir = tempDirectoryURL.appendingPathComponent("inj_out", isDirectory: true)
+        try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        try SevenZipEngine.shared.extractArchive(archivePath: archiveURL.path, destinationPath: outDir.path)
+
+        XCTAssertEqual(try String(contentsOf: outDir.appendingPathComponent("-sdel"), encoding: .utf8), "dash switch content")
+        XCTAssertEqual(try String(contentsOf: outDir.appendingPathComponent("@list_trap.txt"), encoding: .utf8), "/nonexistent/should/not/be/read_as_listfile\n")
+    }
+
+    func testZipSlipPathTraversalBlocked() throws {
+        XCTAssertFalse(SevenZipEngine.isSafeArchiveEntryPath("../../etc/passwd"))
+        XCTAssertFalse(SevenZipEngine.isSafeArchiveEntryPath("sub/../../outside.sh"))
+        XCTAssertFalse(SevenZipEngine.isSafeArchiveEntryPath("/etc/hosts"))
+        XCTAssertFalse(SevenZipEngine.isSafeArchiveEntryPath("\\Windows\\System32"))
+        XCTAssertTrue(SevenZipEngine.isSafeArchiveEntryPath("folder/sub/file..name.txt"))
+
+        let dummyFile = tempDirectoryURL.appendingPathComponent("ok.txt")
+        try Data("ok".utf8).write(to: dummyFile)
+        let archiveURL = tempDirectoryURL.appendingPathComponent("ok.7z")
+        try SevenZipEngine.shared.createArchive(
+            archivePath: archiveURL.path,
+            format: .sevenZ,
+            level: .store,
+            sourcePaths: ["ok.txt"],
+            workingDirectory: tempDirectoryURL.path
+        )
+
+        let outDir = tempDirectoryURL.appendingPathComponent("slip_out", isDirectory: true)
+        XCTAssertThrowsError(
+            try SevenZipEngine.shared.extractArchive(
+                archivePath: archiveURL.path,
+                destinationPath: outDir.path,
+                internalPaths: ["../../evil.sh"]
+            )
+        ) { error in
+            XCTAssertEqual(error as? SevenZipError, .unsafeArchivePath("../../evil.sh"))
+        }
+    }
+
+    func testQuarantineAttributePropagation() throws {
+        let srcFile = tempDirectoryURL.appendingPathComponent("payload.txt")
+        try Data("quarantined data".utf8).write(to: srcFile)
+
+        let archiveURL = tempDirectoryURL.appendingPathComponent("quarantined.7z")
+        try SevenZipEngine.shared.createArchive(
+            archivePath: archiveURL.path,
+            format: .sevenZ,
+            level: .fast,
+            sourcePaths: ["payload.txt"],
+            workingDirectory: tempDirectoryURL.path
+        )
+
+        let quarantineValue = "0081;67260000;Safari;00000000-0000-0000-0000-000000000000"
+        let qData = Data(quarantineValue.utf8)
+        qData.withUnsafeBytes { ptr in
+            if let base = ptr.baseAddress {
+                _ = setxattr(archiveURL.path, "com.apple.quarantine", base, qData.count, 0, XATTR_NOFOLLOW)
+            }
+        }
+
+        let outDir = tempDirectoryURL.appendingPathComponent("q_out", isDirectory: true)
+        try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        try SevenZipEngine.shared.extractArchive(archivePath: archiveURL.path, destinationPath: outDir.path)
+
+        let extractedFile = outDir.appendingPathComponent("payload.txt")
+        let propagatedData = SevenZipEngine.readQuarantineAttribute(atPath: extractedFile.path)
+        XCTAssertEqual(propagatedData, qData, "Extracted file must inherit com.apple.quarantine from the source archive")
+    }
+
+    func testCaseInsensitiveInodeProtectionAndFilenameEdgeCases() throws {
+        // 1. Compound archive extension stripping
+        XCTAssertEqual(SevenZipEngine.stripArchiveExtensions(from: "backup.tar.gz"), "backup")
+        XCTAssertEqual(SevenZipEngine.stripArchiveExtensions(from: "archive.tar.xz"), "archive")
+        XCTAssertEqual(SevenZipEngine.stripArchiveExtensions(from: "volume.7z.001"), "volume")
+        XCTAssertEqual(SevenZipEngine.stripArchiveExtensions(from: "simple.zip"), "simple")
+
+        // 2. NAME_MAX (255 UTF-8 bytes) truncation when duplicating long Cyrillic filenames
+        let longCyrillicStem = String(repeating: "Ы", count: 130) // 260 UTF-8 bytes
+        let safeDupName = FileManagerAppViewModel.makeSafeDuplicateFilename(stem: longCyrillicStem, ext: "txt", counter: 2)
+        XCTAssertLessThanOrEqual(safeDupName.utf8.count, 255)
+        XCTAssertTrue(safeDupName.hasSuffix(" copy 2.txt"))
+
+        // 3. Same-inode protection during Copy to same directory (even with different case on Case-Insensitive APFS)
+        let originalURL = tempDirectoryURL.appendingPathComponent("CaseTest.txt")
+        try Data("important data".utf8).write(to: originalURL)
+
+        let upperAliasURL = tempDirectoryURL.appendingPathComponent("CASETEST.TXT")
+        let fakeItem = FileItem(
+            id: upperAliasURL.path,
+            url: upperAliasURL,
+            name: "CASETEST.TXT",
+            isDirectory: false,
+            isParentEntry: false,
+            size: 14,
+            packedSize: 14,
+            modifiedDate: nil,
+            createdDate: nil,
+            accessedDate: nil,
+            posixPermissions: "-rw-r--r--",
+            fileType: "TXT",
+            comment: "",
+            icon: NSImage()
+        )
+
+        let appVM = FileManagerAppViewModel()
+        try appVM.performFilesystemCopyMove(items: [fakeItem], toDirectory: tempDirectoryURL.path, isMove: false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: originalURL.path), "Source file must not be deleted when copying onto same inode")
+        XCTAssertEqual(try String(contentsOf: originalURL, encoding: .utf8), "important data")
+
+        // 4. Pre-cancelled token throws SevenZipError.cancelled and removes partial archive
+        let token = SevenZipOperationToken()
+        token.cancel()
+        let cancelledArchiveURL = tempDirectoryURL.appendingPathComponent("cancelled.7z")
+        XCTAssertThrowsError(
+            try SevenZipEngine.shared.createArchive(
+                archivePath: cancelledArchiveURL.path,
+                format: .sevenZ,
+                level: .normal,
+                sourcePaths: ["CaseTest.txt"],
+                workingDirectory: tempDirectoryURL.path,
+                token: token
+            )
+        ) { error in
+            XCTAssertEqual(error as? SevenZipError, .cancelled)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cancelledArchiveURL.path))
+    }
+
+    func testKeyboardShortcutsAndAboutSheet() throws {
+        // 1. Verify strong typing of KeyboardShortcuts.Name.extractArchive and default shortcut
+        let originalShortcut = KeyboardShortcuts.getShortcut(for: .extractArchive)
+        defer {
+            KeyboardShortcuts.setShortcut(originalShortcut, for: .extractArchive)
+        }
+
+        KeyboardShortcuts.reset(.extractArchive)
+        let defaultExtract = try XCTUnwrap(KeyboardShortcuts.getShortcut(for: .extractArchive))
+        XCTAssertEqual(defaultExtract.key, .e)
+        XCTAssertTrue(defaultExtract.modifiers.contains(.command))
+        XCTAssertTrue(defaultExtract.modifiers.contains(.shift))
+
+        // 2. Verify custom shortcut persistence and "+" separated display formatting
+        let customShortcut = KeyboardShortcuts.Shortcut(.x, modifiers: [.command, .option])
+        KeyboardShortcuts.setShortcut(customShortcut, for: .extractArchive)
+        XCTAssertEqual(KeyboardShortcuts.getShortcut(for: .extractArchive), customShortcut)
+        XCTAssertEqual(customShortcut.displayString, "⌥ + ⌘ + X")
+        XCTAssertEqual(defaultExtract.displayString, "⇧ + ⌘ + E")
+        XCTAssertEqual(KeyboardShortcuts.getShortcut(for: .deleteItems)?.displayString, "⌘ + ⌫")
+        XCTAssertEqual(KeyboardShortcuts.getShortcut(for: .copyItems)?.displayString, "F5")
+
+        // 3. Verify hotkey subscription triggers actionExtract() in FileManagerAppViewModel
+        let sampleFile = tempDirectoryURL.appendingPathComponent("hotkey_test.txt")
+        try Data("hotkey payload".utf8).write(to: sampleFile)
+        let archiveURL = tempDirectoryURL.appendingPathComponent("hotkey_archive.7z")
+        try SevenZipEngine.shared.createArchive(
+            archivePath: archiveURL.path,
+            format: .sevenZ,
+            level: .fast,
+            sourcePaths: ["hotkey_test.txt"],
+            workingDirectory: tempDirectoryURL.path
+        )
+
+        let appVM = FileManagerAppViewModel()
+        appVM.leftPanel.navigateTo(path: tempDirectoryURL.path)
+        XCTAssertNil(appVM.activeModalSheet)
+
+        KeyboardShortcuts.trigger(.extractArchive)
+        if case .extractArchive(let path, _, _, _) = appVM.activeModalSheet {
+            XCTAssertEqual(URL(fileURLWithPath: path).standardizedFileURL, archiveURL.standardizedFileURL)
+        } else {
+            XCTFail("Expected .extractArchive modal sheet when triggering .extractArchive hotkey")
+        }
+        appVM.activeModalSheet = nil
+
+        // 4. Verify About sheet presentation
+        appVM.showAboutSheet = true
+        XCTAssertTrue(appVM.showAboutSheet)
+        appVM.showAboutSheet = false
+        XCTAssertNil(appVM.activeModalSheet)
+    }
+
+    func testSafeStartupAndNonBlockingHistory() throws {
+        let appVM = FileManagerAppViewModel()
+        // Both panels should initialize without error and match each other
+        XCTAssertFalse(appVM.leftPanel.currentPath.isEmpty)
+        XCTAssertFalse(appVM.rightPanel.currentPath.isEmpty)
+        XCTAssertEqual(appVM.leftPanel.currentPath, appVM.rightPanel.currentPath)
+        XCTAssertNil(appVM.leftPanel.errorMessage)
+        XCTAssertNil(appVM.rightPanel.errorMessage)
+
+        let vm = FilePanelViewModel(panelIndex: 0, initialPath: tempDirectoryURL.path)
+        XCTAssertFalse(vm.pathHistory.isEmpty)
+        XCTAssertFalse(vm.isInsideArchive)
+        XCTAssertNil(vm.errorMessage)
+    }
 }

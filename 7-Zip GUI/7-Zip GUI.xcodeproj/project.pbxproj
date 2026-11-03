@@ -398,7 +398,14 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_CFBundleDisplayName = "7-Zip GUI (Unofficial)";
+				INFOPLIST_KEY_CFBundleName = "7-Zip GUI (Unofficial)";
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "7-Zip GUI (Unofficial) needs access to your Desktop folder to manage and extract archives.";
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "7-Zip GUI (Unofficial) needs access to your Documents folder to manage and extract archives.";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "7-Zip GUI (Unofficial) needs access to your Downloads folder to manage and extract archives.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Unofficial 7-Zip GUI for macOS. Powered by 7-Zip (Igor Pavlov, GNU LGPL).";
+				INFOPLIST_KEY_NSNetworkVolumesUsageDescription = "7-Zip GUI (Unofficial) needs access to network volumes to manage and extract archives.";
+				INFOPLIST_KEY_NSRemovableVolumesUsageDescription = "7-Zip GUI (Unofficial) needs access to removable volumes to manage and extract archives.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -424,7 +431,14 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_CFBundleDisplayName = "7-Zip GUI (Unofficial)";
+				INFOPLIST_KEY_CFBundleName = "7-Zip GUI (Unofficial)";
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "7-Zip GUI (Unofficial) needs access to your Desktop folder to manage and extract archives.";
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "7-Zip GUI (Unofficial) needs access to your Documents folder to manage and extract archives.";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "7-Zip GUI (Unofficial) needs access to your Downloads folder to manage and extract archives.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Unofficial 7-Zip GUI for macOS. Powered by 7-Zip (Igor Pavlov, GNU LGPL).";
+				INFOPLIST_KEY_NSNetworkVolumesUsageDescription = "7-Zip GUI (Unofficial) needs access to network volumes to manage and extract archives.";
+				INFOPLIST_KEY_NSRemovableVolumesUsageDescription = "7-Zip GUI (Unofficial) needs access to removable volumes to manage and extract archives.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

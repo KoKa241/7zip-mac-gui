@@ -63,6 +63,10 @@ struct ContentView: View {
                 SettingsView(appViewModel: appViewModel, isPresented: sheetPresentationBinding)
                     .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
 
+            case .about:
+                AboutSevenZipView(appViewModel: appViewModel, isPresented: sheetPresentationBinding)
+                    .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
+
             case .addArchive(let sourceDirectory, let sourceItems):
                 AddArchiveSheet(
                     appViewModel: appViewModel,

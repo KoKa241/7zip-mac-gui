@@ -121,9 +121,28 @@ struct FilePanelView: View {
             // 1. Panel Header Bar (Up Folder Button + Path Input + History Dropdown)
             panelHeaderBar
 
-            // 2. Main File List (NSTableView wrapper)
-            FileTableView(viewModel: viewModel, isActivePanel: isActive)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Inline Error Banner (e.g. Permission Denied or Not Found)
+            if let error = viewModel.errorMessage {
+                panelErrorBanner(error)
+            }
+
+            // 2. Main File List (NSTableView wrapper) with empty folder overlay
+            ZStack {
+                FileTableView(viewModel: viewModel, isActivePanel: isActive)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if viewModel.items.filter({ !$0.isParentEntry }).isEmpty && viewModel.errorMessage == nil {
+                    VStack(spacing: 6) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 28))
+                            .foregroundColor(.secondary.opacity(0.6))
+                        Text("Folder is Empty")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
 
             // 3. 7-Zip 4-part Status Bar
             panelStatusBar
@@ -136,6 +155,68 @@ struct FilePanelView: View {
                 )
                 .allowsHitTesting(false)
         )
+    }
+
+    // MARK: - Error Banner
+
+    private func panelErrorBanner(_ error: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.orange)
+                .font(.system(size: 12))
+
+            Text(error)
+                .font(.system(size: 11))
+                .lineLimit(2)
+                .foregroundColor(.primary)
+
+            Spacer()
+
+            if isPermissionRelated(error) {
+                Button("Privacy Settings...") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.accentColor)
+                .buttonStyle(PlainButtonStyle())
+            }
+
+            Button("Go Home") {
+                viewModel.navigateTo(path: FileManager.default.homeDirectoryForCurrentUser.path)
+            }
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(.accentColor)
+            .buttonStyle(PlainButtonStyle())
+
+            Button(action: {
+                viewModel.errorMessage = nil
+            }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .padding(3)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .help("Dismiss")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.controlBackgroundColor))
+        .overlay(
+            Divider(),
+            alignment: .bottom
+        )
+    }
+
+    private func isPermissionRelated(_ error: String) -> Bool {
+        let lower = error.lowercased()
+        return lower.contains("permission") ||
+               lower.contains("access") ||
+               lower.contains("not permitted") ||
+               lower.contains("operation not permitted") ||
+               lower.contains("privilege")
     }
 
     // MARK: - Header Bar
@@ -179,11 +260,16 @@ struct FilePanelView: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
 
+                let homePath = FileManager.default.homeDirectoryForCurrentUser.path
                 PathHistoryDropdownButton(
                     quickLocations: [
-                        ("Root (/)", "/"),
+                        ("Home (\(FileManager.default.homeDirectoryForCurrentUser.lastPathComponent))", homePath),
+                        ("Desktop", (homePath as NSString).appendingPathComponent("Desktop")),
+                        ("Downloads", (homePath as NSString).appendingPathComponent("Downloads")),
+                        ("Documents", (homePath as NSString).appendingPathComponent("Documents")),
+                        ("Applications (/Applications)", "/Applications"),
                         ("Volumes (/Volumes)", "/Volumes"),
-                        ("Home (\(FileManager.default.homeDirectoryForCurrentUser.lastPathComponent))", FileManager.default.homeDirectoryForCurrentUser.path)
+                        ("Root (/)", "/")
                     ],
                     recentFolders: viewModel.pathHistory,
                     onSelectPath: { selectedPath in

@@ -49,6 +49,7 @@ enum ToolbarIconStyle: String, CaseIterable, Identifiable {
 enum ActiveModalSheet: Identifiable {
     case info(FileItem)
     case settings
+    case about
     case addArchive(sourceDirectory: String, sourceItems: [FileItem])
     case extractArchive(archivePath: String, internalPaths: [String]?, defaultDestination: String, initialPassword: String?)
     case copyMove(operation: CopyMoveOperationType, sourceItems: [FileItem], sourceArchivePath: String?, sourceArchivePassword: String?, defaultDestination: String)
@@ -59,6 +60,8 @@ enum ActiveModalSheet: Identifiable {
             return "info_\(item.id)"
         case .settings:
             return "settings"
+        case .about:
+            return "about"
         case .addArchive(let dir, _):
             return "add_\(dir)"
         case .extractArchive(let path, _, _, _):
@@ -104,6 +107,20 @@ final class FileManagerAppViewModel: ObservableObject {
         }
     }
 
+    var showAboutSheet: Bool {
+        get {
+            if case .about = activeModalSheet { return true }
+            return false
+        }
+        set {
+            if newValue {
+                activeModalSheet = .about
+            } else if case .about = activeModalSheet {
+                activeModalSheet = nil
+            }
+        }
+    }
+
     var showInfoSheet: Bool {
         get {
             if case .info = activeModalSheet { return true }
@@ -138,9 +155,8 @@ final class FileManagerAppViewModel: ObservableObject {
             initialRight = fm.temporaryDirectory.path
         } else {
             let home = fm.homeDirectoryForCurrentUser.path
-            let desktop = (home as NSString).appendingPathComponent("Desktop")
             initialLeft = home
-            initialRight = fm.fileExists(atPath: desktop) ? desktop : home
+            initialRight = home
         }
 
         self.leftPanel = FilePanelViewModel(panelIndex: 0, initialPath: initialLeft)
@@ -164,7 +180,63 @@ final class FileManagerAppViewModel: ObservableObject {
             self?.activePanelIndex = 1
         }
 
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SevenZipEngine.shared.terminateAllRunningProcesses()
+            FilePanelViewModel.cleanupPreviewDirectories()
+        }
+
+        setupHotkeys()
         applyTheme()
+    }
+
+    // MARK: - Hotkeys Subscription
+
+    func setupHotkeys() {
+        KeyboardShortcuts.onKeyUp(for: .extractArchive) { [weak self] in
+            self?.actionExtract()
+        }
+        KeyboardShortcuts.onKeyUp(for: .addArchive) { [weak self] in
+            self?.actionAdd()
+        }
+        KeyboardShortcuts.onKeyUp(for: .testArchive) { [weak self] in
+            self?.actionTest()
+        }
+        KeyboardShortcuts.onKeyUp(for: .copyItems) { [weak self] in
+            self?.actionCopy()
+        }
+        KeyboardShortcuts.onKeyUp(for: .moveItems) { [weak self] in
+            self?.actionMove()
+        }
+        KeyboardShortcuts.onKeyUp(for: .createFolder) { [weak self] in
+            self?.actionCreateFolder()
+        }
+        KeyboardShortcuts.onKeyUp(for: .deleteItems) { [weak self] in
+            self?.actionDelete()
+        }
+        KeyboardShortcuts.onKeyUp(for: .showInfo) { [weak self] in
+            self?.actionInfo()
+        }
+        KeyboardShortcuts.onKeyUp(for: .toggleDualPane) { [weak self] in
+            self?.toggleDualPane()
+        }
+        KeyboardShortcuts.onKeyUp(for: .navigateUp) { [weak self] in
+            self?.activePanel.navigateUp()
+        }
+        KeyboardShortcuts.onKeyUp(for: .refreshPanel) { [weak self] in
+            self?.activePanel.refresh()
+        }
+        KeyboardShortcuts.onKeyUp(for: .toggleHiddenFiles) { [weak self] in
+            guard let self = self else { return }
+            let newValue = !self.activePanel.showHiddenFiles
+            self.leftPanel.showHiddenFiles = newValue
+            self.rightPanel.showHiddenFiles = newValue
+            self.leftPanel.refresh()
+            self.rightPanel.refresh()
+        }
     }
 
     func applyTheme() {
@@ -281,7 +353,7 @@ final class FileManagerAppViewModel: ObservableObject {
             return
         }
 
-        let archiveBaseName = (URL(fileURLWithPath: archivePath).lastPathComponent as NSString).deletingPathExtension
+        let archiveBaseName = SevenZipEngine.stripArchiveExtensions(from: URL(fileURLWithPath: archivePath).lastPathComponent)
         let defaultDest: String
         if isDualPane && !targetPanel.isInsideArchive {
             defaultDest = targetPanel.currentPath
@@ -406,9 +478,22 @@ final class FileManagerAppViewModel: ObservableObject {
             if srcURL == dstURL {
                 continue
             }
+
             if fm.fileExists(atPath: dstURL.path) {
+                // Check if srcURL and dstURL refer to the exact same inode (e.g. case-insensitive APFS or symlink)
+                let srcID = try? srcURL.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier
+                let dstID = try? dstURL.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier
+                let isSameInode = (srcID != nil && dstID != nil && srcID!.isEqual(dstID!))
+
+                if isSameInode {
+                    if isMove && srcURL.lastPathComponent != dstURL.lastPathComponent {
+                        try fm.moveItem(at: srcURL, to: dstURL)
+                    }
+                    continue
+                }
                 try fm.removeItem(at: dstURL)
             }
+
             if isMove {
                 try fm.moveItem(at: srcURL, to: dstURL)
             } else {
@@ -575,7 +660,7 @@ final class FileManagerAppViewModel: ObservableObject {
         if items.count == 1, let single = items.first {
             return single.isDirectory
                 ? single.name
-                : (single.name as NSString).deletingPathExtension
+                : SevenZipEngine.stripArchiveExtensions(from: single.name)
         }
         let folderName = URL(fileURLWithPath: directory).lastPathComponent
         return folderName.isEmpty || folderName == "/" ? "archive" : folderName
@@ -631,7 +716,7 @@ final class FileManagerAppViewModel: ObservableObject {
     }
 
     func extractToSubfolder(archivePath: String, parentDirectory: String, password: String? = nil) {
-        let baseName = (URL(fileURLWithPath: archivePath).lastPathComponent as NSString).deletingPathExtension
+        let baseName = SevenZipEngine.stripArchiveExtensions(from: URL(fileURLWithPath: archivePath).lastPathComponent)
         let subDir = (parentDirectory as NSString).appendingPathComponent(baseName)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
@@ -695,10 +780,10 @@ final class FileManagerAppViewModel: ObservableObject {
             let ext = item.url.pathExtension
             let stem = (item.name as NSString).deletingPathExtension
 
-            var candidateName = ext.isEmpty ? "\(stem) copy" : "\(stem) copy.\(ext)"
+            var candidateName = Self.makeSafeDuplicateFilename(stem: stem, ext: ext, counter: nil)
             var counter = 2
             while fm.fileExists(atPath: dirURL.appendingPathComponent(candidateName).path) {
-                candidateName = ext.isEmpty ? "\(stem) copy \(counter)" : "\(stem) copy \(counter).\(ext)"
+                candidateName = Self.makeSafeDuplicateFilename(stem: stem, ext: ext, counter: counter)
                 counter += 1
             }
 
@@ -713,6 +798,19 @@ final class FileManagerAppViewModel: ObservableObject {
         if !errors.isEmpty {
             showMessage(title: "Error Duplicating", message: errors.joined(separator: "\n"))
         }
+    }
+
+    /// Ensures the generated duplicate filename never exceeds the 255 UTF-8 byte APFS/HFS+ limit (`NAME_MAX`).
+    static func makeSafeDuplicateFilename(stem: String, ext: String, counter: Int?) -> String {
+        let suffixCore = counter.map { " copy \($0)" } ?? " copy"
+        let suffix = ext.isEmpty ? suffixCore : "\(suffixCore).\(ext)"
+        let maxStemBytes = max(1, 255 - suffix.utf8.count)
+
+        var truncatedStem = stem
+        while truncatedStem.utf8.count > maxStemBytes && !truncatedStem.isEmpty {
+            truncatedStem.removeLast()
+        }
+        return truncatedStem + suffix
     }
 
     func copyFilesToPasteboard(items: [FileItem]) {
