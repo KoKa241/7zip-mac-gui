@@ -53,6 +53,9 @@ struct ContentView: View {
         }
         .frame(minWidth: 780, minHeight: 500)
         .preferredColorScheme(appViewModel.appTheme.preferredColorScheme)
+        .onAppear {
+            appViewModel.loadInitialPanels()
+        }
         .sheet(item: $appViewModel.activeModalSheet) { sheet in
             switch sheet {
             case .info(let item):

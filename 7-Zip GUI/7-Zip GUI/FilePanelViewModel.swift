@@ -6,6 +6,7 @@
 import Foundation
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 
 enum PanelViewMode: Int, CaseIterable {
     case largeIcons = 0
@@ -73,11 +74,59 @@ final class FilePanelViewModel: ObservableObject {
         }
     }
 
-    init(panelIndex: Int, initialPath: String? = nil) {
+    static let genericFolderIcon: NSImage = {
+        let icon = NSWorkspace.shared.icon(forFileType: NSFileTypeForHFSTypeCode(OSType(kGenericFolderIcon)))
+        icon.size = NSSize(width: 16, height: 16)
+        return icon
+    }()
+
+    private var isLoadingInitialItems = false
+
+    init(panelIndex: Int, initialPath: String? = nil, autoLoad: Bool = true) {
         self.panelIndex = panelIndex
         let defaultPath = initialPath ?? FileManager.default.homeDirectoryForCurrentUser.path
         setupInitialHistory()
-        navigateTo(path: defaultPath)
+        if autoLoad {
+            navigateTo(path: defaultPath)
+        } else {
+            let expandedPath = (defaultPath as NSString).expandingTildeInPath
+            let targetPath = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
+            currentPath = targetPath
+            pathInput = targetPath.hasSuffix("/") ? targetPath : targetPath + "/"
+        }
+    }
+
+    func loadInitialItemsIfNeeded() {
+        guard items.isEmpty && !currentPath.isEmpty && !isInsideArchive && !isLoadingInitialItems else {
+            return
+        }
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+                             CommandLine.arguments.contains("-ui-testing")
+        if isRunningTests {
+            loadItems()
+            return
+        }
+
+        isLoadingInitialItems = true
+        let targetPath = currentPath
+        let isFlat = flatView
+        let showHidden = showHiddenFiles
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result {
+                try Self.fetchFilesystemItems(
+                    atPath: targetPath,
+                    flatView: isFlat,
+                    showHiddenFiles: showHidden
+                )
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.isLoadingInitialItems = false
+                guard self.currentPath == targetPath && !self.isInsideArchive else { return }
+                self.applyLoadedFilesystemItems(result)
+            }
+        }
     }
 
     private func setupInitialHistory() {
@@ -509,91 +558,26 @@ final class FilePanelViewModel: ObservableObject {
     // MARK: - Loading Filesystem Items
 
     func loadItems() {
-        let fm = FileManager.default
-        let dirURL = URL(fileURLWithPath: currentPath, isDirectory: true).resolvingSymlinksInPath()
-        let keys: [URLResourceKey] = [
-            .isDirectoryKey,
-            .isPackageKey,
-            .isSymbolicLinkKey,
-            .fileSizeKey,
-            .totalFileAllocatedSizeKey,
-            .contentModificationDateKey,
-            .creationDateKey,
-            .contentAccessDateKey,
-            .localizedTypeDescriptionKey,
-            .isHiddenKey
-        ]
-
-        var options: FileManager.DirectoryEnumerationOptions = []
-        if !showHiddenFiles {
-            options.insert(.skipsHiddenFiles)
+        let result = Result {
+            try Self.fetchFilesystemItems(
+                atPath: currentPath,
+                flatView: flatView,
+                showHiddenFiles: showHiddenFiles
+            )
         }
+        applyLoadedFilesystemItems(result)
+    }
 
+    private func applyLoadedFilesystemItems(_ result: Result<(dirURL: URL, items: [FileItem]), Error>) {
+        let dirURL: URL
         var loadedItems: [FileItem] = []
 
-        do {
-            let urls: [URL]
-            if flatView {
-                options.insert(.skipsPackageDescendants)
-                if let enumerator = fm.enumerator(at: dirURL, includingPropertiesForKeys: keys, options: options) {
-                    urls = enumerator.compactMap { $0 as? URL }
-                } else {
-                    urls = []
-                }
-            } else {
-                urls = try fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: keys, options: options)
-            }
-
-            let resolvedPrefix = dirURL.path.hasSuffix("/") ? dirURL.path : dirURL.path + "/"
-
-            for url in urls {
-                let res = try? url.resourceValues(forKeys: Set(keys))
-                let isDirectory = (res?.isDirectory ?? false) && !(res?.isPackage ?? false)
-                let size = UInt64(res?.fileSize ?? 0)
-                let allocatedSize = UInt64(res?.totalFileAllocatedSize ?? res?.fileSize ?? 0)
-                let mTime = res?.contentModificationDate
-                let cTime = res?.creationDate
-                let aTime = res?.contentAccessDate
-                let typeDesc = res?.localizedTypeDescription ?? (isDirectory ? "Folder" : url.pathExtension.uppercased())
-
-                let attrs = try? fm.attributesOfItem(atPath: url.path)
-                let posixNum = (attrs?[.posixPermissions] as? NSNumber)?.uint16Value ?? 0
-                let permString = Self.formatPosixPermissions(posixNum, isDirectory: isDirectory, isSymlink: res?.isSymbolicLink ?? false)
-
-                let icon = NSWorkspace.shared.icon(forFile: url.path)
-                icon.size = NSSize(width: 16, height: 16)
-
-                let itemName: String
-                if flatView {
-                    let resolvedURLPath = url.resolvingSymlinksInPath().path
-                    if resolvedURLPath.hasPrefix(resolvedPrefix) {
-                        itemName = String(resolvedURLPath.dropFirst(resolvedPrefix.count))
-                    } else {
-                        itemName = url.lastPathComponent
-                    }
-                } else {
-                    itemName = url.lastPathComponent
-                }
-
-                let item = FileItem(
-                    id: url.path,
-                    url: url,
-                    name: itemName,
-                    isDirectory: isDirectory,
-                    isParentEntry: false,
-                    size: isDirectory ? 0 : size,
-                    packedSize: isDirectory ? 0 : allocatedSize,
-                    modifiedDate: mTime,
-                    createdDate: cTime,
-                    accessedDate: aTime,
-                    posixPermissions: permString,
-                    fileType: typeDesc,
-                    comment: "",
-                    icon: icon
-                )
-                loadedItems.append(item)
-            }
-        } catch {
+        switch result {
+        case .success(let payload):
+            dirURL = payload.dirURL
+            loadedItems = payload.items
+        case .failure(let error):
+            dirURL = URL(fileURLWithPath: currentPath, isDirectory: true).resolvingSymlinksInPath()
             errorMessage = error.localizedDescription
         }
 
@@ -612,6 +596,121 @@ final class FilePanelViewModel: ObservableObject {
         if let focused = focusedItem, !validIDs.contains(focused.id) {
             focusedItem = nil
         }
+    }
+
+    private static func fetchFilesystemItems(
+        atPath path: String,
+        flatView: Bool,
+        showHiddenFiles: Bool
+    ) throws -> (dirURL: URL, items: [FileItem]) {
+        let fm = FileManager.default
+        let dirURL = URL(fileURLWithPath: path, isDirectory: true).resolvingSymlinksInPath()
+        // Avoid .isPackageKey and .localizedTypeDescriptionKey here because LaunchServices
+        // probes inside subdirectories (such as ~/Desktop, ~/Documents, ~/Downloads, ~/Library),
+        // which can trigger premature macOS TCC prompts when simply listing the home folder.
+        let keys: [URLResourceKey] = [
+            .isDirectoryKey,
+            .isSymbolicLinkKey,
+            .fileSizeKey,
+            .totalFileAllocatedSizeKey,
+            .contentModificationDateKey,
+            .creationDateKey,
+            .contentAccessDateKey,
+            .isHiddenKey
+        ]
+
+        var options: FileManager.DirectoryEnumerationOptions = []
+        if !showHiddenFiles {
+            options.insert(.skipsHiddenFiles)
+        }
+
+        let urls: [URL]
+        if flatView {
+            options.insert(.skipsPackageDescendants)
+            if let enumerator = fm.enumerator(at: dirURL, includingPropertiesForKeys: keys, options: options) {
+                urls = enumerator.compactMap { $0 as? URL }
+            } else {
+                urls = []
+            }
+        } else {
+            urls = try fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: keys, options: options)
+        }
+
+        let resolvedPrefix = dirURL.path.hasSuffix("/") ? dirURL.path : dirURL.path + "/"
+        var loadedItems: [FileItem] = []
+        loadedItems.reserveCapacity(urls.count)
+
+        for url in urls {
+            let res = try? url.resourceValues(forKeys: Set(keys))
+            let rawIsDir = res?.isDirectory ?? false
+            let ext = url.pathExtension.lowercased()
+            let isPackage = rawIsDir && !ext.isEmpty && (
+                ext == "app" || ext == "bundle" || ext == "framework" ||
+                ext == "plugin" || ext == "xcodeproj" || ext == "xcworkspace" ||
+                UTType(filenameExtension: ext)?.conforms(to: .package) == true
+            )
+            let isDirectory = rawIsDir && !isPackage
+            let size = UInt64(res?.fileSize ?? 0)
+            let allocatedSize = UInt64(res?.totalFileAllocatedSize ?? res?.fileSize ?? 0)
+            let mTime = res?.contentModificationDate
+            let cTime = res?.creationDate
+            let aTime = res?.contentAccessDate
+
+            let typeDesc: String
+            if isDirectory {
+                typeDesc = "Folder"
+            } else if ext == "app" {
+                typeDesc = "Application"
+            } else if !ext.isEmpty, let utType = UTType(filenameExtension: ext), let desc = utType.localizedDescription {
+                typeDesc = desc
+            } else {
+                typeDesc = ext.isEmpty ? "File" : ext.uppercased()
+            }
+
+            var statBuf = stat()
+            let posixNum: UInt16 = (Darwin.lstat(url.path, &statBuf) == 0) ? UInt16(statBuf.st_mode & 0o7777) : 0
+            let permString = Self.formatPosixPermissions(posixNum, isDirectory: isDirectory, isSymlink: res?.isSymbolicLink ?? false)
+
+            let icon: NSImage
+            if isDirectory {
+                icon = Self.genericFolderIcon
+            } else {
+                icon = NSWorkspace.shared.icon(forFileType: ext.isEmpty ? "public.data" : ext)
+                icon.size = NSSize(width: 16, height: 16)
+            }
+
+            let itemName: String
+            if flatView {
+                let resolvedURLPath = url.resolvingSymlinksInPath().path
+                if resolvedURLPath.hasPrefix(resolvedPrefix) {
+                    itemName = String(resolvedURLPath.dropFirst(resolvedPrefix.count))
+                } else {
+                    itemName = url.lastPathComponent
+                }
+            } else {
+                itemName = url.lastPathComponent
+            }
+
+            let item = FileItem(
+                id: url.path,
+                url: url,
+                name: itemName,
+                isDirectory: isDirectory,
+                isParentEntry: false,
+                size: isDirectory ? 0 : size,
+                packedSize: isDirectory ? 0 : allocatedSize,
+                modifiedDate: mTime,
+                createdDate: cTime,
+                accessedDate: aTime,
+                posixPermissions: permString,
+                fileType: typeDesc,
+                comment: "",
+                icon: icon
+            )
+            loadedItems.append(item)
+        }
+
+        return (dirURL, loadedItems)
     }
 
     func setSort(column: FileSortColumn, ascending: Bool? = nil) {

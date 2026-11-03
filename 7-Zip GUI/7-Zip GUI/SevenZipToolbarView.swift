@@ -143,7 +143,7 @@ struct SevenZipToolbarView: View {
                             .font(.system(size: 11, weight: .medium))
                     }
                     .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
+                    .frame(height: 26)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
                             .fill(appViewModel.isDualPane ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.05))
@@ -161,7 +161,7 @@ struct SevenZipToolbarView: View {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.secondary)
-                        .padding(6)
+                        .frame(width: 26, height: 26)
                         .background(
                             RoundedRectangle(cornerRadius: 6)
                                 .fill(Color.primary.opacity(0.05))

@@ -159,8 +159,8 @@ final class FileManagerAppViewModel: ObservableObject {
             initialRight = home
         }
 
-        self.leftPanel = FilePanelViewModel(panelIndex: 0, initialPath: initialLeft)
-        self.rightPanel = FilePanelViewModel(panelIndex: 1, initialPath: initialRight)
+        self.leftPanel = FilePanelViewModel(panelIndex: 0, initialPath: initialLeft, autoLoad: isRunningTests)
+        self.rightPanel = FilePanelViewModel(panelIndex: 1, initialPath: initialRight, autoLoad: isRunningTests)
         self.leftPanel.appViewModel = self
         self.rightPanel.appViewModel = self
 
@@ -269,6 +269,8 @@ final class FileManagerAppViewModel: ObservableObject {
         isDualPane.toggle()
         if !isDualPane {
             activePanelIndex = 0
+        } else {
+            rightPanel.loadInitialItemsIfNeeded()
         }
     }
 
@@ -276,6 +278,36 @@ final class FileManagerAppViewModel: ObservableObject {
         leftPanel.refresh()
         if isDualPane {
             rightPanel.refresh()
+        }
+    }
+
+    func loadInitialPanels() {
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+                             CommandLine.arguments.contains("-ui-testing")
+        if isRunningTests {
+            leftPanel.loadInitialItemsIfNeeded()
+            if isDualPane {
+                rightPanel.loadInitialItemsIfNeeded()
+            }
+            return
+        }
+
+        // Wait until the main window is ordered front and flushed to WindowServer
+        // before starting background filesystem enumeration.
+        DispatchQueue.main.async { [weak self] in
+            if let window = NSApp?.windows.first {
+                window.makeKeyAndOrderFront(nil)
+                window.displayIfNeeded()
+            }
+            CATransaction.flush()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                guard let self = self else { return }
+                self.leftPanel.loadInitialItemsIfNeeded()
+                if self.isDualPane {
+                    self.rightPanel.loadInitialItemsIfNeeded()
+                }
+            }
         }
     }
 

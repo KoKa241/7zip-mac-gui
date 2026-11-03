@@ -304,10 +304,13 @@ struct FilePanelView: View {
     }
 
     private var folderHeaderIcon: NSImage {
-        let iconPath = viewModel.currentArchivePath ?? viewModel.currentPath
-        let icon = NSWorkspace.shared.icon(forFile: iconPath)
-        icon.size = NSSize(width: 16, height: 16)
-        return icon
+        if let archivePath = viewModel.currentArchivePath {
+            let ext = URL(fileURLWithPath: archivePath).pathExtension
+            let icon = NSWorkspace.shared.icon(forFileType: ext.isEmpty ? "public.archive" : ext)
+            icon.size = NSSize(width: 16, height: 16)
+            return icon
+        }
+        return FilePanelViewModel.genericFolderIcon
     }
 
     // MARK: - 4-Part Status Bar
