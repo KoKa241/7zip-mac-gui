@@ -1,6 +1,12 @@
 # macOS
 .DS_Store
 
+# Upstream Engine Sources & Archives
+7zip-*/
+*.tar.xz
+*.tar.gz
+
+
 # Xcode
 xcuserdata/
 *.xcscmblueprint
