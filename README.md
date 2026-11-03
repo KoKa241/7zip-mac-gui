@@ -41,6 +41,22 @@
 - macOS 11.0 (Big Sur) or higher.
 - Native Universal binary: Apple Silicon (`arm64`) & Intel (`x86_64`).
 
+### Installation & First Launch
+
+Download the latest release from the [Releases](https://github.com/your-username/7zip-mac-gui/releases) page, move `7-Zip GUI.app` to your `/Applications` folder, and open it.
+
+> [!NOTE]
+> **macOS Gatekeeper ("Unidentified Developer" / "Cannot be opened"):**  
+> Because this is a community open-source project without a paid \$99/year Apple Developer ID certificate, macOS Gatekeeper may show a warning on first launch.
+>
+> You can launch the app using any of these standard methods (required only once):
+> 1. **Right-click** (or `Control`-click) `7-Zip GUI.app` in Finder → select **Open** → click **Open** in the dialog.
+> 2. **System Settings:** Go to **System Settings → Privacy & Security**, scroll down to the Security section, and click **Open Anyway**.
+> 3. **Terminal:** Strip the download quarantine attribute:
+>    ```bash
+>    xattr -cr "/Applications/7-Zip GUI.app"
+>    ```
+
 ### Building from Source
 
 1. Clone the repository:
